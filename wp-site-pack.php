@@ -2,7 +2,7 @@
 /**
  * Plugin Name: WP Site Pack
  * Description: 모듈형 사이트 운영 유틸리티 팩. 헤더/푸터, 예약글 발행 보장, 자동 인덱싱(IndexNow), Ads 매니저, 소셜 공유, 스마트 스크롤 팝업, 애드 프로텍터를 모듈 On/Off 로 제공합니다.
- * Version: 0.2.1
+ * Version: 0.2.2
  * Author: You
  * License: GPL-2.0+
  * Text Domain: wp-site-pack
@@ -21,7 +21,7 @@ if ( defined( 'WSP_VERSION' ) ) {
 	return;
 }
 
-define( 'WSP_VERSION', '0.2.1' );
+define( 'WSP_VERSION', '0.2.2' );
 define( 'WSP_FILE', __FILE__ );
 define( 'WSP_DIR', plugin_dir_path( __FILE__ ) );
 define( 'WSP_URL', plugin_dir_url( __FILE__ ) );

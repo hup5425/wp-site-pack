@@ -23,8 +23,9 @@ class WSP_Admin {
 		add_action( 'wp_ajax_wsp_check_update', array( __CLASS__, 'ajax_check_update' ) );
 		add_action( 'wp_ajax_wsp_do_update', array( __CLASS__, 'ajax_do_update' ) );
 		// 좌측 관리자 메뉴에서 운영 유틸들을 방문자통계 바로 아래로 모아 정렬.
-		add_filter( 'custom_menu_order', '__return_true' );
-		add_filter( 'menu_order', array( __CLASS__, 'reorder_menu' ) );
+		// 우선순위 999 — 다른 플러그인의 custom_menu_order 를 눌러 이겨야 확실히 적용됨.
+		add_filter( 'custom_menu_order', '__return_true', 999 );
+		add_filter( 'menu_order', array( __CLASS__, 'reorder_menu' ), 999 );
 	}
 
 	/**
