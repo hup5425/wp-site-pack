@@ -22,6 +22,42 @@ class WSP_Admin {
 		// 업데이트 확인/설치 AJAX.
 		add_action( 'wp_ajax_wsp_check_update', array( __CLASS__, 'ajax_check_update' ) );
 		add_action( 'wp_ajax_wsp_do_update', array( __CLASS__, 'ajax_do_update' ) );
+		// 좌측 관리자 메뉴에서 운영 유틸들을 방문자통계 바로 아래로 모아 정렬.
+		add_filter( 'custom_menu_order', '__return_true' );
+		add_filter( 'menu_order', array( __CLASS__, 'reorder_menu' ) );
+	}
+
+	/**
+	 * 방문자통계(wp-visitor-stats) 바로 아래로 사이트팩·사이트이전·파일관리자·링크체크를 모은다.
+	 * 각 플러그인의 position 값이 제각각이라 흩어지는 문제를 한 곳에서 정렬.
+	 *
+	 * @param array $menu_order 현재 최상위 메뉴 슬러그 순서.
+	 * @return array
+	 */
+	public static function reorder_menu( $menu_order ) {
+		if ( ! is_array( $menu_order ) ) {
+			return $menu_order;
+		}
+		$anchor = 'wp-visitor-stats';
+		if ( ! in_array( $anchor, $menu_order, true ) ) {
+			return $menu_order; // 방문자통계가 없으면 건드리지 않음.
+		}
+		// 원하는 순서(방문자통계 바로 아래).
+		$group = array( 'wp-site-pack', 'wp-full-migrator', 'safe-file-manager', 'lcp-dashboard' );
+
+		$rest = array_values( array_diff( $menu_order, $group ) );
+		$out  = array();
+		foreach ( $rest as $slug ) {
+			$out[] = $slug;
+			if ( $slug === $anchor ) {
+				foreach ( $group as $g ) {
+					if ( in_array( $g, $menu_order, true ) ) {
+						$out[] = $g;
+					}
+				}
+			}
+		}
+		return $out;
 	}
 
 	public static function menu() {

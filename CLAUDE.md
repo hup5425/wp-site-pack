@@ -45,8 +45,20 @@ assets/admin.css, admin.js, front/*
 
 ## 배포(릴리스) 절차
 
-버전 두 곳 일치: `wp-site-pack.php` 헤더 `Version:` + `WSP_VERSION` 상수.
-자동 업데이트를 켜려면 `WSP_UPDATE_REPO`('owner/repo')를 채운다(비공개면 `WSP_UPDATE_TOKEN` 도). GitHub repo·릴리스는 **사용자 확인 후**.
+- **GitHub 저장소:** `hup5425/wp-site-pack` (비공개). `WSP_UPDATE_REPO` 상수에 설정됨.
+- **업데이트 토큰:** 코드/zip 에 **넣지 않는다.** 사용자가 **대시보드의 "업데이트 토큰" 필드**에 붙여넣어 DB 옵션 `wsp_update_token` 에 저장(또는 wp-config 에 `WSP_UPDATE_TOKEN` 정의). fine-grained·읽기전용·이 저장소 하나만.
+  - 이유: 비밀을 파일/저장소에 안 남김 + 업데이트해도 안 지워짐 + 자동모드 분류기·GitHub 푸시보호 회피.
+- 버전 두 곳 일치: `wp-site-pack.php` 헤더 `Version:` + `WSP_VERSION` 상수.
+
+```
+cd ~/클로드작업
+zip -rq wp-site-pack/wp-site-pack-vX.Y.Z.zip wp-site-pack \
+  -x "wp-site-pack/.git/*" "wp-site-pack/.claude/*" "wp-site-pack/.DS_Store" \
+     "wp-site-pack/*.zip" "wp-site-pack/CLAUDE.md" "wp-site-pack/기획서.md" "wp-site-pack/인계서.md"
+cd wp-site-pack && git add -A && git commit -m "vX.Y.Z: ..." && git push
+gh release create vX.Y.Z wp-site-pack-vX.Y.Z.zip -t vX.Y.Z -n "변경 내용"
+```
+⚠ SFTP 직접 배포는 이 사이트(co.coreabiz.com)에서 **rate-limit 으로 자주 차단**됨 → GitHub 릴리스 + 대시보드 업데이트 버튼으로 배포하는 게 정석.
 
 ```
 cd ~/클로드작업
