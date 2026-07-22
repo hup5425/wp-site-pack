@@ -27,6 +27,7 @@ class WSP_Core {
 			'class-mod-auto-index.php'         => 'WSP_Mod_Auto_Index',
 			'class-mod-ads-manager.php'        => 'WSP_Mod_Ads_Manager',
 			'class-mod-social-share.php'       => 'WSP_Mod_Social_Share',
+			'class-mod-related-posts.php'      => 'WSP_Mod_Related_Posts',
 			'class-mod-scroll-popup.php'       => 'WSP_Mod_Scroll_Popup',
 			'class-mod-ad-protector.php'       => 'WSP_Mod_Ad_Protector',
 		);
