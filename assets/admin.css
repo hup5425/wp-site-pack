@@ -16,6 +16,14 @@
 .wsp-update-cur { color: #1d2327; }
 #wsp-update-status { font-size: 13px; }
 
+/* ── 업데이트 토큰 박스 ── */
+.wsp-token-box {
+	background: #fff; border: 1px solid #dcdcde; border-radius: 8px;
+	padding: 10px 16px; margin: 0 0 16px;
+}
+.wsp-token-box summary { cursor: pointer; font-weight: 600; }
+.wsp-token-form { margin-top: 10px; }
+
 /* ── 카드 그리드 ── */
 .wsp-grid {
 	display: grid;

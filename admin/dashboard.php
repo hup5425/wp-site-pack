@@ -24,6 +24,28 @@ $modules = WSP_Core::modules();
 	<button type="button" class="button button-primary" id="wsp-do-update" style="display:none">지금 업데이트</button>
 </div>
 
+<?php
+$wsp_token_set = ( defined( 'WSP_UPDATE_TOKEN' ) && '' !== WSP_UPDATE_TOKEN ) || '' !== get_option( 'wsp_update_token', '' );
+if ( '' !== WSP_UPDATE_REPO ) :
+	?>
+	<details class="wsp-token-box" <?php echo $wsp_token_set ? '' : 'open'; ?>>
+		<summary>비공개 저장소 업데이트 토큰 —
+			<?php echo $wsp_token_set ? '<span class="wsp-check-ok">설정됨</span>' : '<span class="wsp-check-no">미설정</span>'; ?>
+		</summary>
+		<form method="post" class="wsp-token-form">
+			<?php wp_nonce_field( 'wsp_token' ); ?>
+			<input type="hidden" name="wsp_action" value="save_update_token">
+			<p>비공개 GitHub 저장소에서 자동 업데이트를 받으려면 <strong>읽기전용 토큰</strong>을 넣어주세요(한 번만).</p>
+			<input type="password" name="update_token" placeholder="github_pat_..." autocomplete="off" style="width:60%">
+			<button type="submit" class="button button-primary">토큰 저장</button>
+			<?php if ( $wsp_token_set ) : ?>
+				<label style="margin-left:10px"><input type="checkbox" name="clear_token" value="1"> 토큰 삭제</label>
+			<?php endif; ?>
+			<p class="wsp-row-help">토큰은 저장 후 보안상 표시되지 않습니다. wp-config.php 에 <code>WSP_UPDATE_TOKEN</code> 을 정의했다면 여기 입력은 필요 없습니다.</p>
+		</form>
+	</details>
+<?php endif; ?>
+
 <?php if ( empty( $modules ) ) : ?>
 	<div class="notice notice-warning"><p>등록된 모듈이 없습니다.</p></div>
 <?php else : ?>

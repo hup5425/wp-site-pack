@@ -172,6 +172,21 @@ class WSP_Admin {
 			self::redirect_back( $slug ? array( 'module' => $slug ) : array(), 'toggled' );
 		}
 
+		if ( 'save_update_token' === $action ) {
+			check_admin_referer( 'wsp_token' );
+			$tok = isset( $_POST['update_token'] ) ? sanitize_text_field( wp_unslash( $_POST['update_token'] ) ) : '';
+			if ( ! empty( $_POST['clear_token'] ) ) {
+				delete_option( 'wsp_update_token' );
+			} elseif ( '' !== $tok ) {
+				update_option( 'wsp_update_token', $tok );
+			}
+			// 토큰 바뀌면 릴리스 캐시 비워 다음 확인 때 즉시 반영.
+			if ( '' !== WSP_UPDATE_REPO ) {
+				delete_transient( 'wsp_upd_' . md5( WSP_UPDATE_REPO ) );
+			}
+			self::redirect_back( array(), 'saved' );
+		}
+
 		if ( 'save_module' === $action ) {
 			$slug = isset( $_POST['module'] ) ? sanitize_key( wp_unslash( $_POST['module'] ) ) : '';
 			check_admin_referer( 'wsp_save_' . $slug );

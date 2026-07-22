@@ -65,8 +65,13 @@ add_action(
 );
 
 // 자동 업데이트 — 관리자/크론 컨텍스트에서만(프런트 부하 없음).
+// 토큰 우선순위: 상수(WSP_UPDATE_TOKEN, wp-config 등) > DB 옵션(대시보드에서 입력) > 없음(공개 저장소용).
 if ( ( is_admin() || ( function_exists( 'wp_doing_cron' ) && wp_doing_cron() ) ) && '' !== WSP_UPDATE_REPO ) {
-	WSP_Updater::init( WSP_UPDATE_REPO, plugin_basename( WSP_FILE ), WSP_UPDATE_TOKEN );
+	$wsp_token = WSP_UPDATE_TOKEN;
+	if ( '' === $wsp_token ) {
+		$wsp_token = (string) get_option( 'wsp_update_token', '' );
+	}
+	WSP_Updater::init( WSP_UPDATE_REPO, plugin_basename( WSP_FILE ), $wsp_token );
 }
 
 // 플러그인 목록에 "대시보드" 바로가기.
