@@ -107,3 +107,4 @@
 .wsp-copy { cursor: pointer; }
 .wsp-check-ok { color: #007017; font-weight: 600; }
 .wsp-check-no { color: #b32d2e; font-weight: 600; }
+.wsp-swatch { display: inline-block; width: 22px; height: 22px; border-radius: 5px; border: 1px solid rgba(0,0,0,.15); vertical-align: middle; }

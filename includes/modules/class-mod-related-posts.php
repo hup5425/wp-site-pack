@@ -33,6 +33,12 @@ class WSP_Mod_Related_Posts extends WSP_Module {
 			'order'           => 'recent',        // recent | oldest | random | popular
 			'auto'            => 1,               // 본문 끝 자동 삽입
 			'post_types'      => array( 'post' => 1 ),
+			// 이전/다음 글 네비게이션.
+			'nav_enabled'     => 0,
+			'nav_position'    => 'below',         // above | below (관련글 기준)
+			'nav_thumb'       => 1,
+			'nav_prev_label'  => '이전 글',
+			'nav_next_label'  => '다음 글',
 		);
 	}
 
@@ -164,8 +170,19 @@ class WSP_Mod_Related_Posts extends WSP_Module {
 		return array_map( 'intval', $ids );
 	}
 
-	/** 관련 글 섹션 HTML. */
+	/** 관련 글 그리드 + 이전/다음 네비 조립. */
 	public function render() {
+		$grid = $this->build_grid();
+		$nav  = $this->render_nav();
+		if ( '' === $grid && '' === $nav ) {
+			return '';
+		}
+		$pos = $this->settings()['nav_position'];
+		return ( 'above' === $pos ) ? $nav . $grid : $grid . $nav;
+	}
+
+	/** 관련 글 그리드 HTML(비면 ''). */
+	protected function build_grid() {
 		$s   = $this->settings();
 		$ids = $this->get_related_ids();
 		if ( empty( $ids ) ) {
@@ -208,6 +225,40 @@ class WSP_Mod_Related_Posts extends WSP_Module {
 		return $out;
 	}
 
+	/** 이전/다음 글 네비게이션 HTML(설정 켜졌고 인접 글 있을 때). */
+	protected function render_nav() {
+		$s = $this->settings();
+		if ( empty( $s['nav_enabled'] ) ) {
+			return '';
+		}
+		$prev = get_previous_post();
+		$next = get_next_post();
+		if ( empty( $prev ) && empty( $next ) ) {
+			return '';
+		}
+		$thumb = ! empty( $s['nav_thumb'] );
+		$out   = '<div class="wsp-postnav' . ( $thumb ? ' has-thumb' : '' ) . '">';
+		$out  .= $prev ? $this->nav_item( $prev, 'prev', (string) $s['nav_prev_label'], $thumb ) : '<span class="wsp-postnav-item wsp-postnav-empty"></span>';
+		$out  .= $next ? $this->nav_item( $next, 'next', (string) $s['nav_next_label'], $thumb ) : '<span class="wsp-postnav-item wsp-postnav-empty"></span>';
+		$out  .= '</div>';
+		return $out;
+	}
+
+	protected function nav_item( $post, $dir, $label, $thumb ) {
+		$link  = get_permalink( $post );
+		$title = get_the_title( $post );
+		$out   = '<a class="wsp-postnav-item wsp-postnav-' . esc_attr( $dir ) . '" href="' . esc_url( $link ) . '">';
+		if ( $thumb ) {
+			$t = get_the_post_thumbnail_url( $post->ID, 'thumbnail' );
+			if ( $t ) {
+				$out .= '<span class="wsp-postnav-thumb"><img src="' . esc_url( $t ) . '" alt="" loading="lazy"></span>';
+			}
+		}
+		$out .= '<span class="wsp-postnav-text"><span class="wsp-postnav-label">' . esc_html( $label ) . '</span>';
+		$out .= '<span class="wsp-postnav-title">' . esc_html( $title ) . '</span></span></a>';
+		return $out;
+	}
+
 	public function sanitize( $input ) {
 		$layout = isset( $input['layout'] ) ? sanitize_key( $input['layout'] ) : 'overlay';
 		if ( ! in_array( $layout, array( 'overlay', 'card', 'text' ), true ) ) {
@@ -246,6 +297,11 @@ class WSP_Mod_Related_Posts extends WSP_Module {
 			'order'           => $order,
 			'auto'            => empty( $input['auto'] ) ? 0 : 1,
 			'post_types'      => array( 'post' => empty( $input['type_post'] ) ? 0 : 1, 'page' => empty( $input['type_page'] ) ? 0 : 1 ),
+			'nav_enabled'     => empty( $input['nav_enabled'] ) ? 0 : 1,
+			'nav_position'    => ( isset( $input['nav_position'] ) && 'above' === $input['nav_position'] ) ? 'above' : 'below',
+			'nav_thumb'       => empty( $input['nav_thumb'] ) ? 0 : 1,
+			'nav_prev_label'  => isset( $input['nav_prev_label'] ) ? sanitize_text_field( (string) $input['nav_prev_label'] ) : '이전 글',
+			'nav_next_label'  => isset( $input['nav_next_label'] ) ? sanitize_text_field( (string) $input['nav_next_label'] ) : '다음 글',
 		);
 	}
 
@@ -356,6 +412,33 @@ class WSP_Mod_Related_Posts extends WSP_Module {
 				<span class="wsp-row-help">끄면 숏코드로만 표시.</span></div>
 			<div class="wsp-row-control">
 				<label><input type="checkbox" name="auto" value="1" <?php checked( $s['auto'], 1 ); ?>> 본문 끝에 자동 표시</label>
+			</div>
+		</div>
+
+		<hr style="margin:22px 0">
+		<h3 style="margin:0 0 8px">이전/다음 글 네비게이션</h3>
+		<div class="wsp-row">
+			<div class="wsp-row-label"><strong>네비게이션 표시</strong>
+				<span class="wsp-row-help">글 하단에 이전 글/다음 글 이동 링크를 표시(테마 기본 네비와 중복되면 테마 것을 끄세요).</span></div>
+			<div class="wsp-row-control">
+				<label><input type="checkbox" name="nav_enabled" value="1" <?php checked( $s['nav_enabled'], 1 ); ?>> 이전/다음 글 네비 표시</label>
+			</div>
+		</div>
+		<div class="wsp-row">
+			<div class="wsp-row-label"><strong>위치 / 썸네일</strong></div>
+			<div class="wsp-row-control">
+				<select name="nav_position">
+					<option value="below" <?php selected( $s['nav_position'], 'below' ); ?>>관련 글 아래</option>
+					<option value="above" <?php selected( $s['nav_position'], 'above' ); ?>>관련 글 위</option>
+				</select>
+				&nbsp; <label><input type="checkbox" name="nav_thumb" value="1" <?php checked( $s['nav_thumb'], 1 ); ?>> 썸네일 표시</label>
+			</div>
+		</div>
+		<div class="wsp-row">
+			<div class="wsp-row-label"><strong>라벨 문구</strong></div>
+			<div class="wsp-row-control">
+				이전: <input type="text" name="nav_prev_label" value="<?php echo esc_attr( $s['nav_prev_label'] ); ?>" style="width:120px">
+				다음: <input type="text" name="nav_next_label" value="<?php echo esc_attr( $s['nav_next_label'] ); ?>" style="width:120px">
 			</div>
 		</div>
 

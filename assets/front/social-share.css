@@ -1,23 +1,23 @@
-/* WP Site Pack — 소셜 공유 버튼 */
+/* WP Site Pack — 소셜 공유 버튼(로고 + 배경색) */
 .wsp-social { display: flex; flex-wrap: wrap; gap: 8px; margin: 20px 0; }
 .wsp-social.wsp-align-center { justify-content: center; }
 .wsp-social.wsp-align-right { justify-content: flex-end; }
+
 .wsp-social-btn {
-	display: inline-flex; align-items: center; justify-content: center;
-	padding: 8px 14px; border-radius: 6px; font-size: 13px; font-weight: 600;
-	color: #fff; text-decoration: none; border: none; cursor: pointer; line-height: 1;
+	display: inline-flex; align-items: center; justify-content: center; gap: 7px;
+	padding: 9px 14px; border-radius: 8px; font-size: 13px; font-weight: 700;
+	text-decoration: none; border: none; cursor: pointer; line-height: 1;
+	/* 배경/글자색은 인라인 스타일(플랫폼별 설정)로 지정됨 */
 }
-.wsp-social-facebook  { background: #1877f2; }
-.wsp-social-band      { background: #03c75a; }
-.wsp-social-kakao     { background: #fee500; color: #191600; }
-.wsp-social-naver     { background: #03c75a; }
-.wsp-social-line      { background: #06c755; }
-.wsp-social-x         { background: #000; }
-.wsp-social-threads   { background: #000; }
-.wsp-social-instagram { background: linear-gradient(45deg,#feda75,#fa7e1e,#d62976,#962fbf,#4f5bd5); }
-.wsp-social-copy      { background: #5b616b; }
-.wsp-social-btn:hover { opacity: .9; color: #fff; }
-.wsp-social-kakao:hover { color: #191600; }
+.wsp-social-btn svg { width: 18px; height: 18px; fill: currentColor; flex: 0 0 auto; }
+.wsp-social-btn .wsp-social-label { line-height: 1; }
+.wsp-social-btn:hover { opacity: .9; }
+
+/* 로고만: 정사각 아이콘 버튼 */
+.wsp-social--logo_only .wsp-social-btn { padding: 10px; width: 40px; height: 40px; border-radius: 8px; }
+
+/* 링크복사 버튼은 밝은 배경일 때 테두리로 구분감 */
+.wsp-social-copy { border: 1px solid rgba(0,0,0,.12); }
 
 /* 복사 완료 토스트 */
 .wsp-social-toast {

@@ -2,7 +2,8 @@
 /**
  * 모듈: 소셜 공유.
  *  - 숏코드 [wsp_social_share] + (옵션) the_content 자동 삽입.
- *  - 페이스북/밴드/카카오톡/네이버/라인/X. 카카오는 JS 키 필요.
+ *  - 플랫폼 로고(SVG) + 플랫폼별 배경색 커스터마이즈 + 버튼 스타일(로고/텍스트).
+ *  - 페이스북/밴드/카카오톡/네이버/라인/X/쓰레드/인스타그램/링크복사.
  *
  * @package wp-site-pack
  */
@@ -15,7 +16,7 @@ class WSP_Mod_Social_Share extends WSP_Module {
 
 	public function id()   { return 'social_share'; }
 	public function name() { return '소셜 공유'; }
-	public function desc() { return '글에 페이스북·카카오톡·네이버·라인·X 등 공유 버튼을 표시합니다.'; }
+	public function desc() { return '글에 페이스북·카카오톡·네이버·라인·X 등 로고 공유 버튼을 표시합니다.'; }
 	public function icon() { return 'dashicons-share'; }
 
 	protected function networks() {
@@ -32,12 +33,29 @@ class WSP_Mod_Social_Share extends WSP_Module {
 		);
 	}
 
+	/** 플랫폼 기본 배경색(브랜드 컬러). */
+	protected function brand_colors() {
+		return array(
+			'facebook'  => '#1877f2',
+			'band'      => '#03c75a',
+			'kakao'     => '#fee500',
+			'naver'     => '#03c75a',
+			'line'      => '#06c755',
+			'x'         => '#191919',
+			'threads'   => '#000000',
+			'instagram' => '#d62976',
+			'copy'      => '#5b616b',
+		);
+	}
+
 	public function default_settings() {
 		return array(
 			'enabled'   => array( 'facebook' => 1, 'kakao' => 1, 'naver' => 1, 'x' => 1, 'copy' => 1 ),
+			'colors'    => $this->brand_colors(),
+			'btn_style' => 'logo_text', // logo_text | logo_only | text_only
 			'kakao_key' => '',
-			'align'     => 'left',   // left|center|right
-			'auto'      => 0,        // the_content 자동 삽입
+			'align'     => 'left',      // left|center|right
+			'auto'      => 0,
 		);
 	}
 
@@ -55,8 +73,7 @@ class WSP_Mod_Social_Share extends WSP_Module {
 		}
 		WSP_Assets::front_style( 'social-share' );
 		$s = $this->settings();
-		$data = array( 'kakaoKey' => (string) $s['kakao_key'] );
-		WSP_Assets::front_script( 'social-share', $data, 'WSP_SOCIAL' );
+		WSP_Assets::front_script( 'social-share', array( 'kakaoKey' => (string) $s['kakao_key'] ), 'WSP_SOCIAL' );
 	}
 
 	public function append_to_content( $content ) {
@@ -64,6 +81,42 @@ class WSP_Mod_Social_Share extends WSP_Module {
 			return $content . $this->shortcode( array() );
 		}
 		return $content;
+	}
+
+	/** 배경색 밝기에 따라 글자/아이콘 색(어두우면 흰색, 밝으면 검정). */
+	protected function text_on( $hex ) {
+		$hex = ltrim( (string) $hex, '#' );
+		if ( 3 === strlen( $hex ) ) {
+			$hex = $hex[0] . $hex[0] . $hex[1] . $hex[1] . $hex[2] . $hex[2];
+		}
+		if ( 6 !== strlen( $hex ) ) {
+			return '#ffffff';
+		}
+		$r = hexdec( substr( $hex, 0, 2 ) );
+		$g = hexdec( substr( $hex, 2, 2 ) );
+		$b = hexdec( substr( $hex, 4, 2 ) );
+		$lum = ( 0.299 * $r + 0.587 * $g + 0.114 * $b ) / 255;
+		return $lum > 0.65 ? '#191600' : '#ffffff';
+	}
+
+	/** 플랫폼 로고 SVG(단색, currentColor). */
+	protected function icon_svg( $net ) {
+		$p = array(
+			'facebook'  => '<path d="M13 22v-8h2.7l.4-3H13V9.1c0-.9.3-1.5 1.6-1.5H17V4.9c-.3 0-1.3-.1-2.5-.1-2.4 0-4 1.5-4 4.2V11H8v3h2.5v8H13z"/>',
+			'band'      => '<path d="M8 5h4.6c2.5 0 3.9 1.2 3.9 3.2 0 1.3-.7 2.1-1.7 2.6 1.3.4 2.2 1.4 2.2 2.9 0 2.2-1.6 3.5-4.3 3.5H8V5zm2.3 5.1h1.9c1.1 0 1.7-.5 1.7-1.3 0-.9-.6-1.3-1.7-1.3h-1.9v2.6zm0 5.1h2c1.2 0 1.9-.5 1.9-1.4 0-1-.7-1.5-1.9-1.5h-2v2.9z"/>',
+			'kakao'     => '<path d="M12 4C7.3 4 3.5 7 3.5 10.7c0 2.4 1.6 4.5 4 5.7-.2.6-.6 2.2-.7 2.6 0 .2.1.4.4.2.3-.1 2.6-1.7 3.6-2.4.5.1 1.1.1 1.7.1 4.7 0 8.5-3 8.5-6.8C20.5 7 16.7 4 12 4z"/>',
+			'naver'     => '<path d="M14.4 12.2 9.4 5H5v14h4.6v-7.2L14.6 19H19V5h-4.6v7.2z"/>',
+			'line'      => '<path d="M12 3.5C6.8 3.5 2.5 6.9 2.5 11c0 3.7 3.4 6.8 8 7.4.3.1.7.2.8.5.1.3.1.6 0 .9 0 0-.1.7-.1.8-.1.3-.2 1 .9.6 1.1-.5 5.7-3.4 7.8-5.8 1.4-1.5 2.1-3.1 2.1-5C22 6.9 17.7 3.5 12 3.5zM8.3 13.3H6.4c-.3 0-.5-.2-.5-.5V9.2c0-.3.2-.5.5-.5s.5.2.5.5v3.1h1.4c.3 0 .5.2.5.5s-.2.5-.5.5zm2-.5c0 .3-.2.5-.5.5s-.5-.2-.5-.5V9.2c0-.3.2-.5.5-.5s.5.2.5.5v3.6zm4.4 0c0 .2-.1.4-.4.5h-.1c-.2 0-.3-.1-.4-.2l-1.9-2.5v2.2c0 .3-.2.5-.5.5s-.5-.2-.5-.5V9.2c0-.2.1-.4.4-.5h.1c.1 0 .3.1.4.2l1.9 2.6V9.2c0-.3.2-.5.5-.5s.5.2.5.5v3.6zm3-2.3c.3 0 .5.2.5.5s-.2.5-.5.5h-1.4v.9h1.4c.3 0 .5.2.5.5s-.2.5-.5.5h-1.9c-.3 0-.5-.2-.5-.5V9.2c0-.3.2-.5.5-.5h1.9c.3 0 .5.2.5.5s-.2.5-.5.5h-1.4v.8h1.4z"/>',
+			'x'         => '<path d="M17.5 3h3l-6.6 7.5L21.8 21h-6l-4.7-6.1L5.6 21h-3l7-8.1L2.3 3h6.2l4.2 5.6L17.5 3zm-1.1 16h1.7L7.7 4.8H5.9L16.4 19z"/>',
+			'threads'   => '<path d="M16.9 11.4c1.4.7 2.4 1.7 2.9 3 .7 1.7.7 4.4-1.5 6.5-1.6 1.6-3.6 2.3-6.3 2.3h0c-3-.1-5.4-1.1-6.9-3C3.7 18.5 3 16.1 3 13v0c0-3.1.7-5.5 2.1-7.2C6.6 3.6 9 2.6 12 2.5h0c3 .1 5.4 1.1 6.9 3 .8 1 1.3 2.1 1.6 3.5l-1.9.5c-.2-1-.6-1.9-1.1-2.5-1.1-1.4-2.8-2.1-5.1-2.1h0c-2.4 0-4.1.7-5.1 2.1-1 1.3-1.5 3.2-1.5 5.6v0c0 2.4.5 4.3 1.5 5.6 1 1.4 2.7 2.1 5.1 2.1h0c2.1 0 3.6-.5 4.8-1.6 1.3-1.3 1.3-2.9.9-3.8-.2-.5-.6-1-1.2-1.4-.2 1.1-.5 2-1.1 2.7-.7.9-1.8 1.4-3.1 1.5-1 .1-2-.2-2.7-.7-.9-.6-1.4-1.5-1.5-2.6-.1-1.1.3-2 1.2-2.7.8-.6 1.9-.9 3.2-1 .5 0 1 0 1.4.1-.1-.5-.2-.9-.4-1.2-.4-.5-1-.7-1.9-.7h0c-.7 0-1.6.2-2.1 1l-1.6-1.1c.8-1.2 2.1-1.8 3.7-1.8h0c2.7 0 4.3 1.7 4.5 4.6zm-5 5.1c.9-.1 1.6-.9 1.8-2.4-.4-.1-.9-.2-1.4-.2-1.3 0-2.1.6-2 1.4.1.8.9 1.3 1.6 1.2z"/>',
+			'instagram' => '<path d="M12 8.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7zm0 5.8a2.3 2.3 0 1 1 0-4.6 2.3 2.3 0 0 1 0 4.6zm4.5-6a.8.8 0 1 1-1.6 0 .8.8 0 0 1 1.6 0zM19 8.6c-.1-1.1-.3-2.1-1.1-2.9-.8-.8-1.8-1-2.9-1.1-1.1-.1-4.9-.1-6 0-1.1.1-2.1.3-2.9 1.1-.8.8-1 1.8-1.1 2.9-.1 1.1-.1 4.9 0 6 .1 1.1.3 2.1 1.1 2.9.8.8 1.8 1 2.9 1.1 1.1.1 4.9.1 6 0 1.1-.1 2.1-.3 2.9-1.1.8-.8 1-1.8 1.1-2.9.1-1.1.1-4.9 0-6zm-1.5 7.2c-.2.6-.7 1.1-1.3 1.3-.9.4-3.1.3-4.2.3s-3.3.1-4.2-.3c-.6-.2-1.1-.7-1.3-1.3-.4-.9-.3-3.1-.3-4.2s-.1-3.3.3-4.2c.2-.6.7-1.1 1.3-1.3.9-.4 3.1-.3 4.2-.3s3.3-.1 4.2.3c.6.2 1.1.7 1.3 1.3.4.9.3 3.1.3 4.2s.1 3.3-.3 4.2z"/>',
+			'copy'      => '<path d="M10.6 13.4a1 1 0 0 0 1.4 0l3-3a3 3 0 1 0-4.2-4.2L9.5 7.5a1 1 0 1 0 1.4 1.4l1.3-1.3a1 1 0 0 1 1.4 1.4l-3 3a1 1 0 0 0 0 1.4zm2.8-2.8a1 1 0 0 0-1.4 0l-3 3a3 3 0 1 0 4.2 4.2l1.3-1.3a1 1 0 1 0-1.4-1.4l-1.3 1.3a1 1 0 0 1-1.4-1.4l3-3a1 1 0 0 0 0-1.4z"/>',
+		);
+		$path = isset( $p[ $net ] ) ? $p[ $net ] : '';
+		if ( '' === $path ) {
+			return '';
+		}
+		return '<svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true">' . $path . '</svg>';
 	}
 
 	public function shortcode( $atts ) {
@@ -76,7 +129,6 @@ class WSP_Mod_Social_Share extends WSP_Module {
 		$eu    = rawurlencode( $url );
 		$et    = rawurlencode( $title );
 
-		// 웹 공유 URL 스킴이 있는 네트워크(쓰레드 포함). 인스타그램은 웹 공유 URL이 없어 '링크 복사'로 동작.
 		$links = array(
 			'facebook' => 'https://www.facebook.com/sharer/sharer.php?u=' . $eu,
 			'band'     => 'https://band.us/plugin/share?body=' . $et . '%20' . $eu,
@@ -86,24 +138,38 @@ class WSP_Mod_Social_Share extends WSP_Module {
 			'threads'  => 'https://www.threads.net/intent/post?text=' . $et . '%20' . $eu,
 		);
 
-		$out = '<div class="wsp-social wsp-align-' . esc_attr( $s['align'] ) . '">';
+		$style   = in_array( $s['btn_style'], array( 'logo_text', 'logo_only', 'text_only' ), true ) ? $s['btn_style'] : 'logo_text';
+		$colors  = is_array( $s['colors'] ) ? $s['colors'] : array();
+		$brand   = $this->brand_colors();
+
+		$out = '<div class="wsp-social wsp-social--' . esc_attr( $style ) . ' wsp-align-' . esc_attr( $s['align'] ) . '">';
 		foreach ( $this->networks() as $net => $label ) {
 			if ( empty( $s['enabled'][ $net ] ) ) {
 				continue;
 			}
+			if ( 'kakao' === $net && '' === $s['kakao_key'] ) {
+				continue;
+			}
+			$bg   = ! empty( $colors[ $net ] ) ? $colors[ $net ] : $brand[ $net ];
+			$fg   = $this->text_on( $bg );
+			$attr = ' style="background:' . esc_attr( $bg ) . ';color:' . esc_attr( $fg ) . '"';
+
+			$inner = '';
+			if ( 'text_only' !== $style ) {
+				$inner .= $this->icon_svg( $net );
+			}
+			if ( 'logo_only' !== $style ) {
+				$inner .= '<span class="wsp-social-label">' . esc_html( $label ) . '</span>';
+			}
+			$cls = 'wsp-social-btn wsp-social-' . esc_attr( $net );
+
 			if ( 'kakao' === $net ) {
-				if ( '' === $s['kakao_key'] ) {
-					continue; // 키 없으면 비활성.
-				}
-				$out .= '<button type="button" class="wsp-social-btn wsp-social-kakao" data-url="' . esc_attr( $url ) . '" data-title="' . esc_attr( $title ) . '">' . esc_html( $label ) . '</button>';
-				continue;
+				$out .= '<button type="button" class="' . $cls . '"' . $attr . ' data-url="' . esc_attr( $url ) . '" data-title="' . esc_attr( $title ) . '" aria-label="' . esc_attr( $label ) . '">' . $inner . '</button>';
+			} elseif ( 'instagram' === $net || 'copy' === $net ) {
+				$out .= '<button type="button" class="' . $cls . '"' . $attr . ' data-wsp-copy="' . esc_attr( $url ) . '" aria-label="' . esc_attr( $label ) . '">' . $inner . '</button>';
+			} else {
+				$out .= '<a class="' . $cls . '"' . $attr . ' href="' . esc_url( $links[ $net ] ) . '" target="_blank" rel="noopener nofollow" aria-label="' . esc_attr( $label ) . '">' . $inner . '</a>';
 			}
-			// 인스타그램·링크복사: 클립보드 복사 버튼(인스타는 웹 공유 스킴이 없어 링크 복사 방식).
-			if ( 'instagram' === $net || 'copy' === $net ) {
-				$out .= '<button type="button" class="wsp-social-btn wsp-social-' . esc_attr( $net ) . '" data-wsp-copy="' . esc_attr( $url ) . '">' . esc_html( $label ) . '</button>';
-				continue;
-			}
-			$out .= '<a class="wsp-social-btn wsp-social-' . esc_attr( $net ) . '" href="' . esc_url( $links[ $net ] ) . '" target="_blank" rel="noopener nofollow">' . esc_html( $label ) . '</a>';
 		}
 		$out .= '</div>';
 		return $out;
@@ -114,12 +180,24 @@ class WSP_Mod_Social_Share extends WSP_Module {
 		foreach ( array_keys( $this->networks() ) as $net ) {
 			$enabled[ $net ] = empty( $input[ 'net_' . $net ] ) ? 0 : 1;
 		}
+		$colors = array();
+		$brand  = $this->brand_colors();
+		foreach ( array_keys( $this->networks() ) as $net ) {
+			$c = isset( $input[ 'color_' . $net ] ) ? (string) $input[ 'color_' . $net ] : '';
+			$colors[ $net ] = preg_match( '/^#[0-9a-fA-F]{6}$/', $c ) ? $c : $brand[ $net ];
+		}
+		$style = isset( $input['btn_style'] ) ? sanitize_key( $input['btn_style'] ) : 'logo_text';
+		if ( ! in_array( $style, array( 'logo_text', 'logo_only', 'text_only' ), true ) ) {
+			$style = 'logo_text';
+		}
 		$align = isset( $input['align'] ) ? sanitize_key( $input['align'] ) : 'left';
 		if ( ! in_array( $align, array( 'left', 'center', 'right' ), true ) ) {
 			$align = 'left';
 		}
 		return array(
 			'enabled'   => $enabled,
+			'colors'    => $colors,
+			'btn_style' => $style,
 			'kakao_key' => isset( $input['kakao_key'] ) ? sanitize_text_field( (string) $input['kakao_key'] ) : '',
 			'align'     => $align,
 			'auto'      => empty( $input['auto'] ) ? 0 : 1,
@@ -127,19 +205,41 @@ class WSP_Mod_Social_Share extends WSP_Module {
 	}
 
 	public function render_settings() {
-		$s = $this->settings();
+		$s      = $this->settings();
+		$colors = is_array( $s['colors'] ) ? $s['colors'] : $this->brand_colors();
+		$brand  = $this->brand_colors();
 		?>
 		<div class="wsp-row">
-			<div class="wsp-row-label"><strong>활성화할 소셜 미디어</strong></div>
-			<div class="wsp-row-control wsp-chips">
-				<?php foreach ( $this->networks() as $net => $label ) : ?>
-					<label class="wsp-chip">
-						<input type="checkbox" name="net_<?php echo esc_attr( $net ); ?>" value="1" <?php checked( ! empty( $s['enabled'][ $net ] ) ); ?>>
-						<?php echo esc_html( $label ); ?><?php echo 'kakao' === $net && '' === $s['kakao_key'] ? '(키 필요)' : ''; ?>
-					</label>
-				<?php endforeach; ?>
+			<div class="wsp-row-label"><strong>버튼 스타일</strong></div>
+			<div class="wsp-row-control">
+				<select name="btn_style">
+					<option value="logo_text" <?php selected( $s['btn_style'], 'logo_text' ); ?>>로고 + 텍스트</option>
+					<option value="logo_only" <?php selected( $s['btn_style'], 'logo_only' ); ?>>로고만</option>
+					<option value="text_only" <?php selected( $s['btn_style'], 'text_only' ); ?>>텍스트만</option>
+				</select>
 			</div>
 		</div>
+
+		<div class="wsp-row">
+			<div class="wsp-row-label"><strong>플랫폼 · 배경색</strong>
+				<span class="wsp-row-help">체크로 표시 여부, 색상칸으로 배경색을 바꿉니다.</span></div>
+			<div class="wsp-row-control">
+				<table class="widefat striped" style="max-width:520px">
+					<thead><tr><th>표시</th><th>플랫폼</th><th>배경색</th><th></th></tr></thead>
+					<tbody>
+					<?php foreach ( $this->networks() as $net => $label ) : ?>
+						<tr>
+							<td><input type="checkbox" name="net_<?php echo esc_attr( $net ); ?>" value="1" <?php checked( ! empty( $s['enabled'][ $net ] ) ); ?>></td>
+							<td><?php echo esc_html( $label ); ?><?php echo 'kakao' === $net && '' === $s['kakao_key'] ? ' <span class="wsp-check-no">(키필요)</span>' : ''; ?></td>
+							<td><input type="color" name="color_<?php echo esc_attr( $net ); ?>" value="<?php echo esc_attr( ! empty( $colors[ $net ] ) ? $colors[ $net ] : $brand[ $net ] ); ?>"></td>
+							<td><span class="wsp-swatch wsp-social-<?php echo esc_attr( $net ); ?>" style="background:<?php echo esc_attr( ! empty( $colors[ $net ] ) ? $colors[ $net ] : $brand[ $net ] ); ?>"></span></td>
+						</tr>
+					<?php endforeach; ?>
+					</tbody>
+				</table>
+			</div>
+		</div>
+
 		<div class="wsp-row">
 			<div class="wsp-row-label"><strong>카카오톡 JavaScript 키</strong>
 				<span class="wsp-row-help">카카오 개발자 사이트의 JavaScript 키. 없으면 카카오 공유 비활성.</span></div>
