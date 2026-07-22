@@ -26,7 +26,11 @@ $modules = WSP_Core::modules();
 
 <?php
 $wsp_token_set = ( defined( 'WSP_UPDATE_TOKEN' ) && '' !== WSP_UPDATE_TOKEN ) || '' !== get_option( 'wsp_update_token', '' );
-if ( '' !== WSP_UPDATE_REPO ) :
+// 공개 저장소에선 토큰이 필요 없어 박스를 숨긴다.
+// 비공개로 다시 바꿔 UI 로 토큰을 넣어야 하면:
+//   add_filter( 'wsp_show_update_token', '__return_true' );  (wp-config 나 mu-plugin)
+$wsp_show_token = (bool) apply_filters( 'wsp_show_update_token', false );
+if ( '' !== WSP_UPDATE_REPO && $wsp_show_token ) :
 	?>
 	<details class="wsp-token-box" <?php echo $wsp_token_set ? '' : 'open'; ?>>
 		<summary>비공개 저장소 업데이트 토큰 —
