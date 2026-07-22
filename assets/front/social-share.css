@@ -1,0 +1,28 @@
+/* WP Site Pack — 소셜 공유 버튼 */
+.wsp-social { display: flex; flex-wrap: wrap; gap: 8px; margin: 20px 0; }
+.wsp-social.wsp-align-center { justify-content: center; }
+.wsp-social.wsp-align-right { justify-content: flex-end; }
+.wsp-social-btn {
+	display: inline-flex; align-items: center; justify-content: center;
+	padding: 8px 14px; border-radius: 6px; font-size: 13px; font-weight: 600;
+	color: #fff; text-decoration: none; border: none; cursor: pointer; line-height: 1;
+}
+.wsp-social-facebook  { background: #1877f2; }
+.wsp-social-band      { background: #03c75a; }
+.wsp-social-kakao     { background: #fee500; color: #191600; }
+.wsp-social-naver     { background: #03c75a; }
+.wsp-social-line      { background: #06c755; }
+.wsp-social-x         { background: #000; }
+.wsp-social-threads   { background: #000; }
+.wsp-social-instagram { background: linear-gradient(45deg,#feda75,#fa7e1e,#d62976,#962fbf,#4f5bd5); }
+.wsp-social-copy      { background: #5b616b; }
+.wsp-social-btn:hover { opacity: .9; color: #fff; }
+.wsp-social-kakao:hover { color: #191600; }
+
+/* 복사 완료 토스트 */
+.wsp-social-toast {
+	position: fixed; left: 50%; bottom: 40px; transform: translateX(-50%) translateY(20px);
+	background: rgba(0,0,0,.85); color: #fff; padding: 10px 18px; border-radius: 8px;
+	font-size: 14px; z-index: 100000; opacity: 0; transition: opacity .3s, transform .3s; pointer-events: none;
+}
+.wsp-social-toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }

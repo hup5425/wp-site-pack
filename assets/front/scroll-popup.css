@@ -1,0 +1,28 @@
+/* WP Site Pack — 스크롤 팝업 */
+.wsp-popup { position: fixed; inset: 0; z-index: 99999; display: flex; align-items: center; justify-content: center; }
+.wsp-popup[hidden] { display: none; }
+.wsp-popup-backdrop { position: absolute; inset: 0; background: rgba(0,0,0,.55); }
+.wsp-popup-box {
+	position: relative; background: #fff; border-radius: 10px; max-width: 90vw; width: 480px;
+	max-height: 85vh; overflow: auto; padding: 28px 24px 24px; box-shadow: 0 10px 40px rgba(0,0,0,.3);
+}
+.wsp-popup-close {
+	position: absolute; top: 8px; right: 10px; background: none; border: none;
+	font-size: 26px; line-height: 1; cursor: pointer; color: #666; z-index: 2;
+}
+.wsp-popup-content img { max-width: 100%; height: auto; }
+
+/* 배너 모드: 여백 없이 이미지/동영상이 박스를 꽉 채움 */
+.wsp-popup-box.wsp-popup--banner { padding: 0; overflow: hidden; }
+.wsp-popup-box.wsp-popup--banner .wsp-popup-close {
+	background: rgba(0,0,0,.5); color: #fff; border-radius: 50%; width: 28px; height: 28px;
+	font-size: 20px; top: 6px; right: 6px;
+}
+.wsp-popup-media { display: block; width: 100%; height: auto; }
+.wsp-popup-content a { display: block; line-height: 0; }
+
+/* 애니메이션 */
+.wsp-popup.wsp-anim-fade .wsp-popup-box { animation: wsp-fade .3s ease; }
+.wsp-popup.wsp-anim-slide .wsp-popup-box { animation: wsp-slide .3s ease; }
+@keyframes wsp-fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes wsp-slide { from { transform: translateY(40px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
