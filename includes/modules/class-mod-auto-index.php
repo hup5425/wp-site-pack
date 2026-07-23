@@ -58,6 +58,44 @@ class WSP_Mod_Auto_Index extends WSP_Module {
 		}
 	}
 
+	/**
+	 * 사이트 루트에 이미 존재하는 IndexNow 키 파일 감지(다른 플러그인/수동 업로드로 생긴 것).
+	 * IndexNow 규격상 키 파일은 {key}.txt 이고 내용이 곧 키다(파일명==내용) → 그걸로 판별.
+	 *
+	 * @return string[] 감지된 키 목록.
+	 */
+	public function detect_existing_keys() {
+		$found = array();
+		$dir   = ABSPATH;
+		if ( ! is_dir( $dir ) || ! is_readable( $dir ) ) {
+			return $found;
+		}
+		$files = @scandir( $dir ); // phpcs:ignore
+		if ( ! is_array( $files ) ) {
+			return $found;
+		}
+		foreach ( $files as $f ) {
+			if ( '.txt' !== substr( $f, -4 ) ) {
+				continue;
+			}
+			$base = substr( $f, 0, -4 );
+			// IndexNow 키 형식(영문/숫자/하이픈 8~128자). license.txt/readme.txt 등은 형식·내용 불일치로 제외됨.
+			if ( ! preg_match( '/^[A-Za-z0-9\-]{8,128}$/', $base ) ) {
+				continue;
+			}
+			$path = $dir . $f;
+			if ( ! is_readable( $path ) || filesize( $path ) > 200 ) {
+				continue;
+			}
+			// phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents
+			$content = trim( (string) @file_get_contents( $path ) );
+			if ( $content === $base ) {
+				$found[] = $base;
+			}
+		}
+		return array_values( array_unique( $found ) );
+	}
+
 	/** {key}.txt 요청 시 키 문자열 반환(물리 파일 불필요). */
 	public function maybe_serve_key() {
 		$key = (string) $this->settings()['key'];
@@ -238,6 +276,24 @@ class WSP_Mod_Auto_Index extends WSP_Module {
 					<input type="text" name="key" id="wsp_indexnow_key" value="<?php echo esc_attr( $s['key'] ); ?>" placeholder="예: a1b2c3d4e5f6..." style="width:55%">
 					<button type="button" class="button wsp-gen-key" data-target="#wsp_indexnow_key">키 생성</button>
 					<p class="wsp-row-help">키가 없으면 <strong>키 생성</strong>을 누른 뒤 <strong>저장하기</strong>를 누르세요. 키 파일은 자동으로 서빙됩니다.</p>
+					<?php
+					$existing = $this->detect_existing_keys();
+					$others   = array_values( array_diff( $existing, array( (string) $s['key'] ) ) );
+					if ( ! empty( $others ) ) :
+						?>
+						<div class="wsp-note">
+							⚠️ 이 사이트에 <strong>이미 IndexNow 키 파일이 있습니다</strong>(다른 플러그인·수동 업로드 등). 중복을 피하려면 <strong>기존 키를 그대로 사용</strong>하세요:
+							<ul style="margin:6px 0 0">
+								<?php foreach ( $others as $k ) : ?>
+									<li>
+										<code class="wsp-code"><?php echo esc_html( $k ); ?></code>
+										<button type="button" class="button button-small wsp-use-key" data-target="#wsp_indexnow_key" data-key="<?php echo esc_attr( $k ); ?>">이 키 사용</button>
+										<a href="<?php echo esc_url( home_url( '/' . $k . '.txt' ) ); ?>" target="_blank">열기</a>
+									</li>
+								<?php endforeach; ?>
+							</ul>
+						</div>
+					<?php endif; ?>
 					<?php if ( '' !== $s['key'] ) : ?>
 						<p>키 파일: <code class="wsp-code"><?php echo esc_html( home_url( '/' . $s['key'] . '.txt' ) ); ?></code>
 							<a href="<?php echo esc_url( home_url( '/' . $s['key'] . '.txt' ) ); ?>" target="_blank">열기</a></p>

@@ -105,6 +105,15 @@
 			} );
 		} );
 
+		// ── 감지된 기존 IndexNow 키 채택(대상 input 에 채움) ──
+		document.querySelectorAll( '.wsp-use-key' ).forEach( function ( btn ) {
+			btn.addEventListener( 'click', function ( e ) {
+				e.preventDefault();
+				var target = document.querySelector( btn.getAttribute( 'data-target' ) );
+				if ( target ) { target.value = btn.getAttribute( 'data-key' ) || ''; target.focus(); }
+			} );
+		} );
+
 		// ── 미디어 라이브러리 선택(이미지/동영상 → 대상 input 에 URL 채움) ──
 		document.querySelectorAll( '.wsp-media-pick' ).forEach( function ( btn ) {
 			btn.addEventListener( 'click', function ( e ) {
