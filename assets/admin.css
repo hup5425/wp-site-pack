@@ -111,6 +111,7 @@
 
 /* 소셜 공유 미리보기(관리자에서 프런트 버튼 재현) */
 .wsp-social-preview { padding: 6px 0; }
+.wsp-social-preview .wsp-social-heading { font-size: 14px; font-weight: 700; color: #333; margin: 0 0 8px; }
 .wsp-social-preview .wsp-social { display: flex; flex-wrap: wrap; gap: 8px; }
 .wsp-social-preview .wsp-social.wsp-align-center { justify-content: center; }
 .wsp-social-preview .wsp-social.wsp-align-right { justify-content: flex-end; }
@@ -119,4 +120,4 @@
 	padding: 9px 14px; border-radius: 8px; font-size: 13px; font-weight: 700; line-height: 1;
 }
 .wsp-social-preview .wsp-social--logo_only .wsp-social-btn { padding: 10px; width: 40px; height: 40px; }
-.wsp-social-preview .wsp-social-btn svg { width: 18px; height: 18px; fill: currentColor; flex: 0 0 auto; }
+.wsp-social-preview .wsp-social-btn svg { width: 18px; height: 18px; flex: 0 0 auto; }

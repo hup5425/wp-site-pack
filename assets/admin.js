@@ -194,7 +194,12 @@
 				var style = val( 'btn_style' ) || 'logo_text';
 				var align = val( 'align' ) || 'left';
 				var kakaoKey = val( 'kakao_key' );
-				var html = '<div class="wsp-social wsp-social--' + style + ' wsp-align-' + align + '">';
+				var label = val( 'share_label' );
+				var html = '';
+				if ( label && label.trim() ) {
+					html += '<div class="wsp-social-heading">' + label.replace( /</g, '&lt;' ) + '</div>';
+				}
+				html += '<div class="wsp-social wsp-social--' + style + ' wsp-align-' + align + '">';
 				Object.keys( NETS ).forEach( function ( net ) {
 					var cb = sform.querySelector( '[name="net_' + net + '"]' );
 					if ( ! cb || ! cb.checked ) { return; }

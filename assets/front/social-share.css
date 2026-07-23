@@ -1,5 +1,6 @@
 /* WP Site Pack — 소셜 공유 버튼(로고 + 배경색) */
-.wsp-social { display: flex; flex-wrap: wrap; gap: 8px; margin: 20px 0; }
+.wsp-social-heading { font-size: 14px; font-weight: 700; color: #333; margin: 20px 0 8px; }
+.wsp-social { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0 20px; }
 .wsp-social.wsp-align-center { justify-content: center; }
 .wsp-social.wsp-align-right { justify-content: flex-end; }
 
@@ -9,7 +10,7 @@
 	text-decoration: none; border: none; cursor: pointer; line-height: 1;
 	/* 배경/글자색은 인라인 스타일(플랫폼별 설정)로 지정됨 */
 }
-.wsp-social-btn svg { width: 18px; height: 18px; fill: currentColor; flex: 0 0 auto; }
+.wsp-social-btn svg { width: 18px; height: 18px; flex: 0 0 auto; }
 .wsp-social-btn .wsp-social-label { line-height: 1; }
 .wsp-social-btn:hover { opacity: .9; }
 

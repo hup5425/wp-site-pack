@@ -50,9 +50,10 @@ class WSP_Mod_Social_Share extends WSP_Module {
 
 	public function default_settings() {
 		return array(
-			'enabled'   => array( 'facebook' => 1, 'kakao' => 1, 'naver' => 1, 'x' => 1, 'copy' => 1 ),
-			'colors'    => $this->brand_colors(),
-			'btn_style' => 'logo_text', // logo_text | logo_only | text_only
+			'enabled'     => array( 'facebook' => 1, 'kakao' => 1, 'naver' => 1, 'x' => 1, 'copy' => 1 ),
+			'share_label' => '공유하기',
+			'colors'      => $this->brand_colors(),
+			'btn_style'   => 'logo_text', // logo_text | logo_only | text_only
 			'kakao_key' => '',
 			'align'     => 'left',       // left|center|right
 			'position'  => 'bottom',     // none | top | bottom | both
@@ -109,6 +110,10 @@ class WSP_Mod_Social_Share extends WSP_Module {
 
 	/** 플랫폼 로고 SVG(단색, currentColor). */
 	protected function icon_svg( $net ) {
+		// 링크복사: 쇠사슬(체인 링크) 아이콘.
+		if ( 'copy' === $net ) {
+			return '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>';
+		}
 		$p = array(
 			'facebook'  => '<path d="M13 22v-8h2.7l.4-3H13V9.1c0-.9.3-1.5 1.6-1.5H17V4.9c-.3 0-1.3-.1-2.5-.1-2.4 0-4 1.5-4 4.2V11H8v3h2.5v8H13z"/>',
 			'band'      => '<path d="M8 5h4.6c2.5 0 3.9 1.2 3.9 3.2 0 1.3-.7 2.1-1.7 2.6 1.3.4 2.2 1.4 2.2 2.9 0 2.2-1.6 3.5-4.3 3.5H8V5zm2.3 5.1h1.9c1.1 0 1.7-.5 1.7-1.3 0-.9-.6-1.3-1.7-1.3h-1.9v2.6zm0 5.1h2c1.2 0 1.9-.5 1.9-1.4 0-1-.7-1.5-1.9-1.5h-2v2.9z"/>',
@@ -150,7 +155,11 @@ class WSP_Mod_Social_Share extends WSP_Module {
 		$colors  = is_array( $s['colors'] ) ? $s['colors'] : array();
 		$brand   = $this->brand_colors();
 
-		$out = '<div class="wsp-social wsp-social--' . esc_attr( $style ) . ' wsp-align-' . esc_attr( $s['align'] ) . '">';
+		$out = '';
+		if ( '' !== trim( (string) $s['share_label'] ) ) {
+			$out .= '<div class="wsp-social-heading">' . esc_html( $s['share_label'] ) . '</div>';
+		}
+		$out .= '<div class="wsp-social wsp-social--' . esc_attr( $style ) . ' wsp-align-' . esc_attr( $s['align'] ) . '">';
 		foreach ( $this->networks() as $net => $label ) {
 			if ( empty( $s['enabled'][ $net ] ) ) {
 				continue;
@@ -207,12 +216,13 @@ class WSP_Mod_Social_Share extends WSP_Module {
 			$position = 'bottom';
 		}
 		return array(
-			'enabled'   => $enabled,
-			'colors'    => $colors,
-			'btn_style' => $style,
-			'kakao_key' => isset( $input['kakao_key'] ) ? sanitize_text_field( (string) $input['kakao_key'] ) : '',
-			'align'     => $align,
-			'position'  => $position,
+			'enabled'     => $enabled,
+			'share_label' => isset( $input['share_label'] ) ? sanitize_text_field( (string) $input['share_label'] ) : '',
+			'colors'      => $colors,
+			'btn_style'   => $style,
+			'kakao_key'   => isset( $input['kakao_key'] ) ? sanitize_text_field( (string) $input['kakao_key'] ) : '',
+			'align'       => $align,
+			'position'    => $position,
 		);
 	}
 
@@ -238,6 +248,12 @@ class WSP_Mod_Social_Share extends WSP_Module {
 				<div id="wsp-social-preview" class="wsp-social-preview"></div>
 				<script type="application/json" id="wsp-social-pv-data"><?php echo wp_json_encode( $pv ); ?></script>
 			</div>
+		</div>
+
+		<div class="wsp-row">
+			<div class="wsp-row-label"><strong>공유 안내 문구</strong>
+				<span class="wsp-row-help">버튼 앞에 표시(예: 공유하기 / 이 글이 유용했다면 공유해주세요). 비우면 숨김.</span></div>
+			<div class="wsp-row-control"><input type="text" name="share_label" value="<?php echo esc_attr( $s['share_label'] ); ?>" style="width:60%"></div>
 		</div>
 
 		<div class="wsp-row">
