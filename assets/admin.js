@@ -173,5 +173,49 @@
 			document.body.appendChild( ov );
 		}
 
+		// ── 소셜 공유 실시간 미리보기 ──
+		var pvData = document.getElementById( 'wsp-social-pv-data' );
+		var pvBox  = document.getElementById( 'wsp-social-preview' );
+		if ( pvData && pvBox ) {
+			var NETS = {};
+			try { NETS = JSON.parse( pvData.textContent || '{}' ); } catch ( e ) {}
+			var sform = pvBox.closest( 'form' );
+
+			var textOn = function ( hex ) {
+				hex = ( hex || '' ).replace( '#', '' );
+				if ( hex.length === 3 ) { hex = hex[0]+hex[0]+hex[1]+hex[1]+hex[2]+hex[2]; }
+				if ( hex.length !== 6 ) { return '#ffffff'; }
+				var r = parseInt( hex.substr(0,2),16 ), g = parseInt( hex.substr(2,2),16 ), b = parseInt( hex.substr(4,2),16 );
+				return ( 0.299*r + 0.587*g + 0.114*b ) / 255 > 0.65 ? '#191600' : '#ffffff';
+			};
+			var val = function ( name ) { var el = sform.querySelector( '[name="' + name + '"]' ); return el ? el.value : ''; };
+
+			var buildPreview = function () {
+				var style = val( 'btn_style' ) || 'logo_text';
+				var align = val( 'align' ) || 'left';
+				var kakaoKey = val( 'kakao_key' );
+				var html = '<div class="wsp-social wsp-social--' + style + ' wsp-align-' + align + '">';
+				Object.keys( NETS ).forEach( function ( net ) {
+					var cb = sform.querySelector( '[name="net_' + net + '"]' );
+					if ( ! cb || ! cb.checked ) { return; }
+					if ( net === 'kakao' && ! kakaoKey ) { return; }
+					var ce = sform.querySelector( '[name="color_' + net + '"]' );
+					var bg = ( ce && ce.value ) || NETS[net].brand;
+					var fg = textOn( bg );
+					var inner = '';
+					if ( style !== 'text_only' ) { inner += NETS[net].svg; }
+					if ( style !== 'logo_only' ) { inner += '<span class="wsp-social-label">' + NETS[net].label + '</span>'; }
+					html += '<span class="wsp-social-btn wsp-social-' + net + '" style="background:' + bg + ';color:' + fg + '">' + inner + '</span>';
+				} );
+				html += '</div>';
+				if ( ! /wsp-social-btn/.test( html ) ) { html = '<em style="color:#888">표시할 플랫폼을 선택하세요.</em>'; }
+				pvBox.innerHTML = html;
+			};
+
+			sform.addEventListener( 'input', buildPreview );
+			sform.addEventListener( 'change', buildPreview );
+			buildPreview();
+		}
+
 	} );
 } )();

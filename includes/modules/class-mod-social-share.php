@@ -54,16 +54,16 @@ class WSP_Mod_Social_Share extends WSP_Module {
 			'colors'    => $this->brand_colors(),
 			'btn_style' => 'logo_text', // logo_text | logo_only | text_only
 			'kakao_key' => '',
-			'align'     => 'left',      // left|center|right
-			'auto'      => 0,
+			'align'     => 'left',       // left|center|right
+			'position'  => 'bottom',     // none | top | bottom | both
 		);
 	}
 
 	public function register() {
 		add_shortcode( 'wsp_social_share', array( $this, 'shortcode' ) );
 		add_action( 'wp_enqueue_scripts', array( $this, 'assets' ) );
-		if ( ! empty( $this->settings()['auto'] ) ) {
-			add_filter( 'the_content', array( $this, 'append_to_content' ), 20 );
+		if ( 'none' !== $this->settings()['position'] ) {
+			add_filter( 'the_content', array( $this, 'insert_content' ), 20 );
 		}
 	}
 
@@ -76,11 +76,19 @@ class WSP_Mod_Social_Share extends WSP_Module {
 		WSP_Assets::front_script( 'social-share', array( 'kakaoKey' => (string) $s['kakao_key'] ), 'WSP_SOCIAL' );
 	}
 
-	public function append_to_content( $content ) {
-		if ( is_singular() && in_the_loop() && is_main_query() ) {
-			return $content . $this->shortcode( array() );
+	public function insert_content( $content ) {
+		if ( ! ( is_singular() && in_the_loop() && is_main_query() ) ) {
+			return $content;
 		}
-		return $content;
+		$pos  = $this->settings()['position'];
+		$html = $this->shortcode( array() );
+		if ( 'top' === $pos ) {
+			return $html . $content;
+		}
+		if ( 'both' === $pos ) {
+			return $html . $content . $html;
+		}
+		return $content . $html; // bottom
 	}
 
 	/** 배경색 밝기에 따라 글자/아이콘 색(어두우면 흰색, 밝으면 검정). */
@@ -194,13 +202,17 @@ class WSP_Mod_Social_Share extends WSP_Module {
 		if ( ! in_array( $align, array( 'left', 'center', 'right' ), true ) ) {
 			$align = 'left';
 		}
+		$position = isset( $input['position'] ) ? sanitize_key( $input['position'] ) : 'bottom';
+		if ( ! in_array( $position, array( 'none', 'top', 'bottom', 'both' ), true ) ) {
+			$position = 'bottom';
+		}
 		return array(
 			'enabled'   => $enabled,
 			'colors'    => $colors,
 			'btn_style' => $style,
 			'kakao_key' => isset( $input['kakao_key'] ) ? sanitize_text_field( (string) $input['kakao_key'] ) : '',
 			'align'     => $align,
-			'auto'      => empty( $input['auto'] ) ? 0 : 1,
+			'position'  => $position,
 		);
 	}
 
@@ -208,7 +220,26 @@ class WSP_Mod_Social_Share extends WSP_Module {
 		$s      = $this->settings();
 		$colors = is_array( $s['colors'] ) ? $s['colors'] : $this->brand_colors();
 		$brand  = $this->brand_colors();
+
+		// 미리보기용 아이콘/라벨/브랜드색 데이터(JS 가 실시간 렌더).
+		$pv = array();
+		foreach ( $this->networks() as $net => $label ) {
+			$pv[ $net ] = array(
+				'label' => $label,
+				'svg'   => $this->icon_svg( $net ),
+				'brand' => $brand[ $net ],
+			);
+		}
 		?>
+		<div class="wsp-row wsp-row--toggle">
+			<div class="wsp-row-label"><strong>미리보기</strong>
+				<span class="wsp-row-help">아래 설정을 바꾸면 즉시 반영됩니다.</span></div>
+			<div class="wsp-row-control">
+				<div id="wsp-social-preview" class="wsp-social-preview"></div>
+				<script type="application/json" id="wsp-social-pv-data"><?php echo wp_json_encode( $pv ); ?></script>
+			</div>
+		</div>
+
 		<div class="wsp-row">
 			<div class="wsp-row-label"><strong>버튼 스타일</strong></div>
 			<div class="wsp-row-control">
@@ -256,10 +287,15 @@ class WSP_Mod_Social_Share extends WSP_Module {
 			</div>
 		</div>
 		<div class="wsp-row">
-			<div class="wsp-row-label"><strong>글 하단 자동 삽입</strong>
-				<span class="wsp-row-help">끄면 숏코드로만 표시.</span></div>
+			<div class="wsp-row-label"><strong>표시 위치</strong>
+				<span class="wsp-row-help">글의 어디에 자동으로 넣을지. "숏코드만"이면 원하는 위치에 직접 삽입.</span></div>
 			<div class="wsp-row-control">
-				<label><input type="checkbox" name="auto" value="1" <?php checked( $s['auto'], 1 ); ?>> 본문 끝에 자동으로 버튼 추가</label>
+				<select name="position">
+					<option value="bottom" <?php selected( $s['position'], 'bottom' ); ?>>글 하단</option>
+					<option value="top" <?php selected( $s['position'], 'top' ); ?>>글 상단</option>
+					<option value="both" <?php selected( $s['position'], 'both' ); ?>>글 상단 + 하단</option>
+					<option value="none" <?php selected( $s['position'], 'none' ); ?>>자동 삽입 안 함(숏코드만)</option>
+				</select>
 			</div>
 		</div>
 		<div class="wsp-row">
