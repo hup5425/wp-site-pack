@@ -25,10 +25,12 @@ class WSP_Mod_Auto_Index extends WSP_Module {
 		return array(
 			'key'       => '',
 			'auto'      => 1,
-			'types'       => array( 'post' => 1, 'page' => 0 ),
-			'verify_bing'  => '',
-			'verify_naver' => '',
-			'log'         => array(),
+			'types'         => array( 'post' => 1, 'page' => 0 ),
+			'verify_bing'   => '',
+			'verify_naver'  => '',
+			'verify_google' => '',
+			'verify_files'  => array(), // filename => content (업로드한 인증 HTML)
+			'log'           => array(),
 		);
 	}
 
@@ -36,8 +38,13 @@ class WSP_Mod_Auto_Index extends WSP_Module {
 		// 키 파일 가상 서빙.
 		add_action( 'template_redirect', array( $this, 'maybe_serve_key' ) );
 
-		// 빙/네이버 사이트 소유 인증 메타(빙 웹마스터툴 연동).
+		// 빙/네이버/구글 사이트 소유 인증 메타.
 		add_action( 'wp_head', array( $this, 'output_verification' ), 1 );
+
+		// 업로드한 인증 HTML 파일 가상 서빙.
+		if ( ! empty( $this->settings()['verify_files'] ) ) {
+			add_action( 'template_redirect', array( $this, 'maybe_serve_verify' ), 1 );
+		}
 
 		$s = $this->settings();
 		if ( ! empty( $s['auto'] ) && '' !== $s['key'] ) {
@@ -47,7 +54,7 @@ class WSP_Mod_Auto_Index extends WSP_Module {
 		add_action( 'wsp_indexnow_submit', array( $this, 'submit_url' ) );
 	}
 
-	/** 빙/네이버 인증 메타 태그 출력(<head>). */
+	/** 빙/네이버/구글 인증 메타 태그 출력(<head>). */
 	public function output_verification() {
 		$s = $this->settings();
 		if ( ! empty( $s['verify_bing'] ) ) {
@@ -55,6 +62,22 @@ class WSP_Mod_Auto_Index extends WSP_Module {
 		}
 		if ( ! empty( $s['verify_naver'] ) ) {
 			echo '<meta name="naver-site-verification" content="' . esc_attr( $s['verify_naver'] ) . '" />' . "\n";
+		}
+		if ( ! empty( $s['verify_google'] ) ) {
+			echo '<meta name="google-site-verification" content="' . esc_attr( $s['verify_google'] ) . '" />' . "\n";
+		}
+	}
+
+	/** 업로드한 인증 HTML 파일을 루트 경로에서 서빙(예: googleXXXX.html, naverXXXX.html). */
+	public function maybe_serve_verify() {
+		$req  = isset( $_SERVER['REQUEST_URI'] ) ? sanitize_text_field( wp_unslash( $_SERVER['REQUEST_URI'] ) ) : '';
+		$path = trim( wp_parse_url( $req, PHP_URL_PATH ) ?: '', '/' );
+		$files = $this->settings()['verify_files'];
+		if ( is_array( $files ) && isset( $files[ $path ] ) ) {
+			header( 'Content-Type: text/html; charset=utf-8' );
+			header( 'Cache-Control: public, max-age=300' );
+			echo $files[ $path ]; // phpcs:ignore WordPress.Security.EscapeOutput
+			exit;
 		}
 	}
 
@@ -235,10 +258,29 @@ class WSP_Mod_Auto_Index extends WSP_Module {
 				'post' => empty( $input['type_post'] ) ? 0 : 1,
 				'page' => empty( $input['type_page'] ) ? 0 : 1,
 			),
-			'verify_bing'  => isset( $input['verify_bing'] ) ? sanitize_text_field( (string) $input['verify_bing'] ) : '',
-			'verify_naver' => isset( $input['verify_naver'] ) ? sanitize_text_field( (string) $input['verify_naver'] ) : '',
-			'log'          => is_array( $s['log'] ) ? $s['log'] : array(),
+			'verify_bing'   => isset( $input['verify_bing'] ) ? sanitize_text_field( (string) $input['verify_bing'] ) : '',
+			'verify_naver'  => isset( $input['verify_naver'] ) ? sanitize_text_field( (string) $input['verify_naver'] ) : '',
+			'verify_google' => isset( $input['verify_google'] ) ? sanitize_text_field( (string) $input['verify_google'] ) : '',
+			'verify_files'  => is_array( $s['verify_files'] ) ? $s['verify_files'] : array(),
+			'log'           => is_array( $s['log'] ) ? $s['log'] : array(),
 		);
+
+		// 인증 HTML 파일 업로드(구글/빙/네이버 파일 방식). 파일명·내용만 저장.
+		if ( ! empty( $_FILES['verify_upload']['name'] ) && empty( $_FILES['verify_upload']['error'] ) ) {
+			$name = sanitize_file_name( $_FILES['verify_upload']['name'] );
+			$tmp  = isset( $_FILES['verify_upload']['tmp_name'] ) ? $_FILES['verify_upload']['tmp_name'] : ''; // phpcs:ignore
+			if ( $name && is_uploaded_file( $tmp ) ) {
+				// phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents
+				$content = (string) @file_get_contents( $tmp );
+				if ( strlen( $content ) < 100000 ) { // 100KB 캡.
+					$out['verify_files'][ $name ] = $content;
+				}
+			}
+		}
+		// 인증 파일 삭제.
+		if ( ! empty( $input['remove_verify'] ) ) {
+			unset( $out['verify_files'][ sanitize_file_name( (string) $input['remove_verify'] ) ] );
+		}
 
 		// 수동 인덱싱 요청(저장과 동시에 즉시 제출).
 		if ( ! empty( $input['manual_url'] ) ) {
@@ -322,8 +364,31 @@ class WSP_Mod_Auto_Index extends WSP_Module {
 			</div>
 			<div class="wsp-row">
 				<div class="wsp-row-label"><strong>네이버 서치어드바이저 인증</strong>
-					<span class="wsp-row-help">네이버 메타태그 인증 코드(naver-site-verification 값만). 파일 방식은 Ads 매니저에서.</span></div>
+					<span class="wsp-row-help">네이버 메타태그 인증 코드(naver-site-verification 값만).</span></div>
 				<div class="wsp-row-control"><input type="text" name="verify_naver" value="<?php echo esc_attr( $s['verify_naver'] ); ?>" placeholder="예: 1a2b3c..."></div>
+			</div>
+			<div class="wsp-row">
+				<div class="wsp-row-label"><strong>구글 서치콘솔 인증</strong>
+					<span class="wsp-row-help">구글 메타태그 인증 코드(google-site-verification 값만).</span></div>
+				<div class="wsp-row-control"><input type="text" name="verify_google" value="<?php echo esc_attr( $s['verify_google'] ); ?>" placeholder="예: AbCdEf..."></div>
+			</div>
+			<div class="wsp-row">
+				<div class="wsp-row-label"><strong>인증 HTML 파일 업로드</strong>
+					<span class="wsp-row-help">메타태그 대신 <strong>파일 방식</strong>으로 인증할 때. 구글/빙/네이버가 준 HTML 파일을 그대로 올리세요(루트에서 자동 서빙).</span></div>
+				<div class="wsp-row-control">
+					<input type="file" name="verify_upload" accept=".html,.htm,.txt,.xml">
+					<?php $vf = $s['verify_files']; if ( ! empty( $vf ) ) : ?>
+						<table class="widefat striped" style="margin-top:10px;max-width:520px"><tbody>
+						<?php foreach ( $vf as $fname => $c ) : ?>
+							<tr>
+								<td><code class="wsp-code"><?php echo esc_html( $fname ); ?></code>
+									<a href="<?php echo esc_url( home_url( '/' . $fname ) ); ?>" target="_blank">열기</a></td>
+								<td style="text-align:right"><button type="submit" name="remove_verify" value="<?php echo esc_attr( $fname ); ?>" class="button-link-delete">삭제</button></td>
+							</tr>
+						<?php endforeach; ?>
+						</tbody></table>
+					<?php endif; ?>
+				</div>
 			</div>
 
 			<div class="wsp-row">
