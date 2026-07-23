@@ -52,6 +52,11 @@ class WSP_Mod_Auto_Index extends WSP_Module {
 			add_action( 'transition_post_status', array( $this, 'on_transition' ), 10, 3 );
 		}
 		add_action( 'wsp_indexnow_submit', array( $this, 'submit_url' ) );
+
+		// 수동 인덱싱(글 목록) AJAX.
+		add_action( 'wp_ajax_wsp_indexnow_list', array( $this, 'ajax_list' ) );
+		add_action( 'wp_ajax_wsp_indexnow_post', array( $this, 'ajax_index_post' ) );
+		add_action( 'wp_ajax_wsp_indexnow_bulk', array( $this, 'ajax_index_bulk' ) );
 	}
 
 	/** 빙/네이버/구글 인증 메타 태그 출력(<head>). */
@@ -301,6 +306,140 @@ class WSP_Mod_Auto_Index extends WSP_Module {
 		return $out;
 	}
 
+	/* ------------------------------ 수동 인덱싱(글 목록) ------------------------------ */
+
+	/** 글 하나 인덱싱 + 상태 저장. 반환: HTTP 응답코드. */
+	protected function index_post( $id ) {
+		$url = get_permalink( $id );
+		if ( ! $url ) {
+			return 0;
+		}
+		$code = $this->submit_url( $url );
+		update_post_meta( $id, '_wsp_indexnow', array( 'code' => (int) $code, 'time' => current_time( 'mysql' ) ) );
+		return $code;
+	}
+
+	/** 글의 인덱싱 상태 배지 HTML. */
+	protected function status_cell( $id ) {
+		$m = get_post_meta( $id, '_wsp_indexnow', true );
+		if ( ! is_array( $m ) || empty( $m['time'] ) ) {
+			return '<span class="wsp-mi-badge none">미요청</span>';
+		}
+		$ok = isset( $m['code'] ) && (int) $m['code'] >= 200 && (int) $m['code'] < 300;
+		return '<span class="wsp-mi-badge ' . ( $ok ? 'ok' : 'no' ) . '" title="' . esc_attr( $m['time'] ) . '">'
+			. ( $ok ? '요청됨' : '실패(' . (int) $m['code'] . ')' ) . '</span>';
+	}
+
+	/** 발행글 목록 + 페이지네이션 HTML(수동 인덱싱 표). 예약(future)글은 제외(publish 만). */
+	public function manual_list_html( $search, $paged ) {
+		$types = array_keys( array_filter( (array) $this->settings()['types'] ) );
+		if ( empty( $types ) ) {
+			$types = array( 'post' );
+		}
+		$q = new WP_Query( array(
+			'post_type'           => $types,
+			'post_status'         => 'publish', // 발행된 글만(예약글 제외).
+			'posts_per_page'      => 100,
+			'paged'               => max( 1, (int) $paged ),
+			's'                   => (string) $search,
+			'orderby'             => 'date',
+			'order'               => 'DESC',
+			'ignore_sticky_posts' => true,
+		) );
+
+		ob_start();
+		if ( empty( $q->posts ) ) {
+			echo '<p>표시할 발행글이 없습니다.</p>';
+			return ob_get_clean();
+		}
+		?>
+		<table class="widefat striped wsp-mi-table">
+			<thead><tr>
+				<td class="check-column"><input type="checkbox" class="wsp-mi-all"></td>
+				<th>제목</th><th style="width:70px">유형</th><th style="width:150px">작성일</th><th style="width:90px">인덱싱 상태</th><th style="width:80px">동작</th>
+			</tr></thead>
+			<tbody>
+			<?php foreach ( $q->posts as $po ) :
+				$id    = $po->ID;
+				$url   = get_permalink( $id );
+				$pt    = get_post_type_object( $po->post_type );
+				$tlabel = $pt ? $pt->labels->singular_name : $po->post_type;
+				?>
+				<tr>
+					<th class="check-column"><input type="checkbox" class="wsp-mi-cb" value="<?php echo (int) $id; ?>"></th>
+					<td>
+						<strong><?php echo esc_html( get_the_title( $id ) ); ?></strong><br>
+						<a href="<?php echo esc_url( $url ); ?>" target="_blank" style="font-size:11px;color:#2271b1;word-break:break-all"><?php echo esc_html( urldecode( $url ) ); ?></a>
+					</td>
+					<td><?php echo esc_html( $tlabel ); ?></td>
+					<td><?php echo esc_html( mysql2date( 'Y-m-d H:i:s', $po->post_date ) ); ?></td>
+					<td class="wsp-mi-status" data-id="<?php echo (int) $id; ?>"><?php echo $this->status_cell( $id ); // phpcs:ignore ?></td>
+					<td><button type="button" class="button button-primary wsp-mi-btn" data-id="<?php echo (int) $id; ?>">인덱싱</button></td>
+				</tr>
+			<?php endforeach; ?>
+			</tbody>
+		</table>
+		<?php
+		$total = (int) $q->max_num_pages;
+		$cur   = max( 1, (int) $paged );
+		if ( $total > 1 ) {
+			echo '<div class="wsp-mi-pager">';
+			if ( $cur > 1 ) {
+				echo '<a class="button wsp-mi-page" data-p="' . ( $cur - 1 ) . '">‹ 이전</a> ';
+			}
+			echo '<span style="margin:0 10px">' . $cur . ' / ' . $total . ' 페이지</span>';
+			if ( $cur < $total ) {
+				echo ' <a class="button wsp-mi-page" data-p="' . ( $cur + 1 ) . '">다음 ›</a>';
+			}
+			echo '</div>';
+		}
+		return ob_get_clean();
+	}
+
+	protected function ajax_guard() {
+		if ( ! check_ajax_referer( 'wsp_ajax', 'nonce', false ) || ! current_user_can( 'manage_options' ) ) {
+			wp_send_json_error( array( 'message' => '권한이 없습니다.' ), 403 );
+		}
+	}
+
+	public function ajax_list() {
+		$this->ajax_guard();
+		$s = isset( $_POST['s'] ) ? sanitize_text_field( wp_unslash( $_POST['s'] ) ) : '';
+		$p = isset( $_POST['p'] ) ? max( 1, (int) $_POST['p'] ) : 1;
+		wp_send_json_success( array( 'html' => $this->manual_list_html( $s, $p ) ) );
+	}
+
+	public function ajax_index_post() {
+		$this->ajax_guard();
+		$id = isset( $_POST['post_id'] ) ? (int) $_POST['post_id'] : 0;
+		if ( ! $id || 'publish' !== get_post_status( $id ) ) {
+			wp_send_json_error( array( 'message' => '발행된 글이 아닙니다.' ) );
+		}
+		if ( '' === (string) $this->settings()['key'] ) {
+			wp_send_json_error( array( 'message' => '먼저 IndexNow 키를 저장하세요.' ) );
+		}
+		$this->index_post( $id );
+		wp_send_json_success( array( 'status' => $this->status_cell( $id ) ) );
+	}
+
+	public function ajax_index_bulk() {
+		$this->ajax_guard();
+		if ( '' === (string) $this->settings()['key'] ) {
+			wp_send_json_error( array( 'message' => '먼저 IndexNow 키를 저장하세요.' ) );
+		}
+		$ids = isset( $_POST['ids'] ) ? array_map( 'intval', (array) wp_unslash( $_POST['ids'] ) ) : array();
+		$ids = array_slice( array_filter( $ids ), 0, 100 );
+		$res = array();
+		foreach ( $ids as $id ) {
+			if ( 'publish' !== get_post_status( $id ) ) {
+				continue;
+			}
+			$this->index_post( $id );
+			$res[ $id ] = $this->status_cell( $id );
+		}
+		wp_send_json_success( array( 'results' => $res ) );
+	}
+
 	public function render_settings() {
 		$s = $this->settings();
 		?>
@@ -420,13 +559,24 @@ class WSP_Mod_Auto_Index extends WSP_Module {
 		</div>
 
 		<div class="wsp-tabpane" data-pane="man">
+			<p class="wsp-sub">게시글을 선택해 인덱싱 요청을 보낼 수 있습니다. 상태는 가장 최근 요청 결과 기준입니다. <strong>발행된 글만</strong> 표시됩니다(예약글 제외).</p>
+
 			<div class="wsp-row">
 				<div class="wsp-row-label"><strong>URL 직접 제출</strong>
-					<span class="wsp-row-help">저장 시 즉시 IndexNow로 전송됩니다.</span></div>
+					<span class="wsp-row-help">목록에 없는 주소를 직접 제출. 저장 시 즉시 전송됩니다.</span></div>
 				<div class="wsp-row-control">
 					<input type="url" name="manual_url" placeholder="https://<?php echo esc_attr( wp_parse_url( home_url(), PHP_URL_HOST ) ); ?>/...">
 				</div>
 			</div>
+
+			<hr style="margin:18px 0">
+
+			<div class="wsp-mi-toolbar">
+				<input type="text" id="wsp-mi-search" placeholder="게시글 제목 검색" style="width:260px">
+				<button type="button" class="button" id="wsp-mi-search-btn">검색</button>
+				<button type="button" class="button button-primary" id="wsp-mi-bulk">선택된 게시글 인덱싱</button>
+			</div>
+			<div id="wsp-mi-list"><?php echo $this->manual_list_html( '', 1 ); // phpcs:ignore ?></div>
 		</div>
 		<?php
 	}

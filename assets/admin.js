@@ -105,6 +105,77 @@
 			} );
 		} );
 
+		// ── 수동 인덱싱: 글 목록 검색/페이지/개별·일괄 인덱싱 ──
+		var miList = document.getElementById( 'wsp-mi-list' );
+		if ( miList ) {
+			var MW = window.WSP || {};
+			var miPost = function ( action, extra, cb ) {
+				var body = new URLSearchParams();
+				body.set( 'action', action );
+				body.set( 'nonce', MW.nonce || '' );
+				Object.keys( extra || {} ).forEach( function ( k ) {
+					if ( Array.isArray( extra[k] ) ) { extra[k].forEach( function ( v ) { body.append( k + '[]', v ); } ); }
+					else { body.set( k, extra[k] ); }
+				} );
+				fetch( MW.ajax, { method: 'POST', body: body, credentials: 'same-origin' } )
+					.then( function ( r ) { return r.json(); } ).then( cb ).catch( function () {} );
+			};
+			var miSearchInp = document.getElementById( 'wsp-mi-search' );
+			var loadList = function ( s, p ) {
+				miList.innerHTML = '<p>불러오는 중…</p>';
+				miPost( 'wsp_indexnow_list', { s: s || '', p: p || 1 }, function ( res ) {
+					if ( res && res.success ) { miList.innerHTML = res.data.html; }
+					else { miList.innerHTML = '<p>목록을 불러오지 못했습니다.</p>'; }
+				} );
+			};
+			var searchBtn = document.getElementById( 'wsp-mi-search-btn' );
+			if ( searchBtn ) { searchBtn.addEventListener( 'click', function () { loadList( miSearchInp.value, 1 ); } ); }
+			if ( miSearchInp ) { miSearchInp.addEventListener( 'keydown', function ( e ) { if ( e.key === 'Enter' ) { e.preventDefault(); loadList( miSearchInp.value, 1 ); } } ); }
+
+			miList.addEventListener( 'click', function ( e ) {
+				var btn = e.target.closest( '.wsp-mi-btn' );
+				if ( btn ) {
+					var id = btn.getAttribute( 'data-id' );
+					btn.disabled = true; btn.textContent = '요청중…';
+					miPost( 'wsp_indexnow_post', { post_id: id }, function ( res ) {
+						btn.disabled = false; btn.textContent = '인덱싱';
+						if ( res && res.success ) {
+							var cell = miList.querySelector( '.wsp-mi-status[data-id="' + id + '"]' );
+							if ( cell ) { cell.innerHTML = res.data.status; }
+						} else if ( res && res.data && res.data.message ) { alert( res.data.message ); }
+					} );
+					return;
+				}
+				var pg = e.target.closest( '.wsp-mi-page' );
+				if ( pg ) { loadList( miSearchInp ? miSearchInp.value : '', pg.getAttribute( 'data-p' ) ); }
+			} );
+
+			miList.addEventListener( 'change', function ( e ) {
+				if ( e.target.classList.contains( 'wsp-mi-all' ) ) {
+					var on = e.target.checked;
+					miList.querySelectorAll( '.wsp-mi-cb' ).forEach( function ( cb ) { cb.checked = on; } );
+				}
+			} );
+
+			var bulkBtn = document.getElementById( 'wsp-mi-bulk' );
+			if ( bulkBtn ) {
+				bulkBtn.addEventListener( 'click', function () {
+					var ids = Array.prototype.map.call( miList.querySelectorAll( '.wsp-mi-cb:checked' ), function ( cb ) { return cb.value; } );
+					if ( ! ids.length ) { alert( '게시글을 선택하세요.' ); return; }
+					bulkBtn.disabled = true; bulkBtn.textContent = '요청중… (' + ids.length + ')';
+					miPost( 'wsp_indexnow_bulk', { ids: ids }, function ( res ) {
+						bulkBtn.disabled = false; bulkBtn.textContent = '선택된 게시글 인덱싱';
+						if ( res && res.success && res.data.results ) {
+							Object.keys( res.data.results ).forEach( function ( id ) {
+								var cell = miList.querySelector( '.wsp-mi-status[data-id="' + id + '"]' );
+								if ( cell ) { cell.innerHTML = res.data.results[id]; }
+							} );
+						} else if ( res && res.data && res.data.message ) { alert( res.data.message ); }
+					} );
+				} );
+			}
+		}
+
 		// ── 감지된 기존 IndexNow 키 채택(대상 input 에 채움) ──
 		document.querySelectorAll( '.wsp-use-key' ).forEach( function ( btn ) {
 			btn.addEventListener( 'click', function ( e ) {

@@ -107,6 +107,16 @@
 .wsp-copy { cursor: pointer; }
 .wsp-check-ok { color: #007017; font-weight: 600; }
 .wsp-check-no { color: #b32d2e; font-weight: 600; }
+
+/* 수동 인덱싱 목록 */
+.wsp-mi-toolbar { display: flex; gap: 8px; align-items: center; margin: 12px 0; flex-wrap: wrap; }
+.wsp-mi-toolbar #wsp-mi-bulk { margin-left: auto; }
+.wsp-mi-table td, .wsp-mi-table th { vertical-align: middle; }
+.wsp-mi-badge { display: inline-block; padding: 2px 9px; border-radius: 10px; font-size: 11px; font-weight: 600; }
+.wsp-mi-badge.none { background: #f0f0f1; color: #8a8f94; }
+.wsp-mi-badge.ok { background: #edfaef; color: #007017; }
+.wsp-mi-badge.no { background: #fcebea; color: #b32d2e; }
+.wsp-mi-pager { margin: 14px 0; text-align: center; }
 .wsp-swatch { display: inline-block; width: 22px; height: 22px; border-radius: 5px; border: 1px solid rgba(0,0,0,.15); vertical-align: middle; }
 
 /* 소셜 공유 미리보기(관리자에서 프런트 버튼 재현) */
