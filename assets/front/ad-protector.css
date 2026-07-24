@@ -1,7 +1,12 @@
 /* WP Site Pack — 애드 프로텍터 차단 모달 */
 .wsp-adp-modal { position: fixed; inset: 0; z-index: 100000; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,.7); }
 .wsp-adp-box { background: #fff; border-radius: 10px; max-width: 90vw; width: 420px; padding: 28px 24px; text-align: center; box-shadow: 0 10px 40px rgba(0,0,0,.35); }
+.wsp-adp-box { position: relative; }
 .wsp-adp-box h3 { margin: 0 0 12px; color: #b32d2e; }
 .wsp-adp-box p { color: #333; line-height: 1.6; }
+.wsp-adp-close {
+	position: absolute; top: 8px; right: 10px; background: none; border: none;
+	font-size: 24px; line-height: 1; cursor: pointer; color: #888;
+}
 /* 차단 시 광고 숨김 */
 body.wsp-adp-blocked ins.adsbygoogle { display: none !important; }

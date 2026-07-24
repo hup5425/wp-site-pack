@@ -17,8 +17,10 @@
 /* 로고만: 정사각 아이콘 버튼 */
 .wsp-social--logo_only .wsp-social-btn { padding: 10px; width: 40px; height: 40px; border-radius: 8px; }
 
-/* 링크복사 버튼은 밝은 배경일 때 테두리로 구분감 */
-.wsp-social-copy { border: 1px solid rgba(0,0,0,.12); }
+/* 밝은 배경(링크복사·네이버 블로그/카페) 버튼은 테두리로 구분감 */
+.wsp-social-copy,
+.wsp-social-naver_blog,
+.wsp-social-naver_cafe { border: 1px solid rgba(0,0,0,.14); }
 
 /* 복사 완료 토스트 */
 .wsp-social-toast {

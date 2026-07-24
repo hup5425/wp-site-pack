@@ -31,7 +31,7 @@ class WSP_Mod_Ad_Protector extends WSP_Module {
 			'allow_ips'    => array(),
 			'block_ips'    => array(),
 			'block_countries' => array(),
-			'modal_text'   => '비정상적인 광고 클릭이 감지되어 접근이 제한되었습니다.',
+			'modal_text'   => '비정상적인 광고 클릭이 감지되어 이 페이지의 광고 표시가 제한되었습니다.',
 		);
 	}
 
@@ -71,6 +71,10 @@ class WSP_Mod_Ad_Protector extends WSP_Module {
 
 	public function assets() {
 		if ( is_admin() ) {
+			return;
+		}
+		// 로그인한 편집자(관리자·에디터 등)는 추적/차단 대상에서 완전 제외 — 본인이 차단되는 사고 방지.
+		if ( is_user_logged_in() && current_user_can( 'edit_posts' ) ) {
 			return;
 		}
 		WSP_Assets::front_style( 'ad-protector' );
@@ -126,6 +130,10 @@ class WSP_Mod_Ad_Protector extends WSP_Module {
 	/** 광고 클릭 AJAX — 시간창 카운트 → 초과 시 차단 기록. */
 	public function ajax_click() {
 		check_ajax_referer( 'wsp_ad', 'nonce' );
+		// 로그인 편집자는 집계·차단하지 않음.
+		if ( is_user_logged_in() && current_user_can( 'edit_posts' ) ) {
+			wp_send_json_success( array( 'blocked' => 0 ) );
+		}
 		$ip = WSP_Stats_Bridge::client_ip();
 		if ( '' === $ip ) {
 			wp_send_json_success( array( 'blocked' => 0 ) );
@@ -207,6 +215,17 @@ class WSP_Mod_Ad_Protector extends WSP_Module {
 
 	public function sanitize( $input ) {
 		$s = $this->settings();
+
+		// 차단 기록 전체 삭제 요청(오탐 복구용).
+		if ( ! empty( $input['clear_blocks'] ) ) {
+			global $wpdb;
+			$table = $this->table();
+			// phpcs:ignore WordPress.DB.DirectDatabaseQuery
+			if ( $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $table ) ) === $table ) {
+				// phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.NotPrepared
+				$wpdb->query( "TRUNCATE TABLE {$table}" );
+			}
+		}
 
 		$parse_ips = function ( $raw ) {
 			$out = array();
@@ -310,6 +329,7 @@ class WSP_Mod_Ad_Protector extends WSP_Module {
 				<?php if ( empty( $blocks ) ) : ?>
 					<p>아직 차단 기록이 없습니다.</p>
 				<?php else : ?>
+					<p><label><input type="checkbox" name="clear_blocks" value="1"> <strong>차단 기록 전체 삭제</strong>(저장 시) — 모든 차단 즉시 해제</label></p>
 					<table class="widefat striped"><thead><tr><th>IP</th><th>국가</th><th>클릭</th><th>차단 시각</th><th>해제 예정</th></tr></thead><tbody>
 					<?php foreach ( $blocks as $b ) : ?>
 						<tr>
@@ -324,7 +344,7 @@ class WSP_Mod_Ad_Protector extends WSP_Module {
 				<?php endif; ?>
 			</div>
 		</div>
-		<div class="wsp-note">애드 프로텍터는 광고 차단의 무결성을 보장하지 않습니다.</div>
+		<div class="wsp-note">로그인한 관리자·에디터는 <strong>추적/차단에서 제외</strong>됩니다(본인 차단 방지). 실제 클릭(광고를 눌러 광고 iframe으로 포커스 이동)만 집계하도록 엄격히 동작합니다. 그래도 애드 프로텍터는 광고 차단의 무결성을 보장하지 않습니다.</div>
 		<?php
 	}
 }
