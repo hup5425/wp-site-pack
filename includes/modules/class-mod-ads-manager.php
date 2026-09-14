@@ -220,6 +220,44 @@ class WSP_Mod_Ads_Manager extends WSP_Module {
 		return $base . "\n\n" . implode( "\n", $keep );
 	}
 
+	/** 지금 robots 에 들어 있는 다음 웹마스터도구 인증 줄(없으면 빈 값). */
+	public function daum_line() {
+		$robots = $this->editable_robots_txt();
+		if ( '' === trim( $robots ) ) {
+			$robots = $this->live_robots_txt();
+		}
+		return preg_match( '/^#DaumWebMasterTool:.*$/m', $robots, $m ) ? trim( $m[0] ) : '';
+	}
+
+	/**
+	 * 다음 인증 줄을 새 것으로 바꾼다(없으면 끝에 붙인다). WSP_Rest 가 부른다.
+	 *
+	 * 저장값이 비어 있으면 지금 서빙 중인 robots 를 바탕으로 삼는다 — 사이트맵 줄 같은 나머지를 잃지 않게.
+	 * 이 모듈이 꺼져 있으면 저장값이 서빙되지 않으므로 켠다.
+	 *
+	 * @param string $line `#DaumWebMasterTool:` 로 시작하는 한 줄.
+	 * @return string 저장된 robots 내용.
+	 */
+	public function put_daum_line( $line ) {
+		$base = $this->editable_robots_txt();
+		if ( '' === trim( $base ) ) {
+			$base = $this->live_robots_txt();
+		}
+		$robots = preg_replace( '/^#DaumWebMasterTool:.*$/m', $line, $base, -1, $count );
+		if ( ! $count ) {
+			$robots = rtrim( $base ) . "\n\n" . $line;
+		}
+		$robots = $this->clean_txt( $robots );
+
+		$s               = $this->settings();
+		$s['robots_txt'] = $robots;
+		WSP_Settings::set( $this->id(), $s );
+		WSP_Settings::set_active( $this->id(), 1 );
+		$this->write_through( 'robots.txt', $robots );
+		delete_transient( 'wsp_cur_robots' );
+		return $robots;
+	}
+
 	/** 물리 파일 존재 여부(가상 서빙이 가려지는지 진단). */
 	protected function physical_exists( $file ) {
 		return file_exists( ABSPATH . $file );

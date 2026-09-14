@@ -2,7 +2,7 @@
 /**
  * Plugin Name: WP Site Pack
  * Description: 모듈형 사이트 운영 유틸리티 팩. 헤더/푸터, 예약글 발행 보장, 자동 인덱싱(IndexNow), Ads 매니저, 소셜 공유, 관련 글, 스마트 스크롤 팝업, 애드 프로텍터, SEO(Rank Math 대체)를 모듈 On/Off 로 제공합니다.
- * Version: 0.4.2
+ * Version: 0.4.3
  * Author: You
  * License: GPL-2.0+
  * Text Domain: wp-site-pack
@@ -21,7 +21,7 @@ if ( defined( 'WSP_VERSION' ) ) {
 	return;
 }
 
-define( 'WSP_VERSION', '0.4.2' );
+define( 'WSP_VERSION', '0.4.3' );
 define( 'WSP_FILE', __FILE__ );
 define( 'WSP_DIR', plugin_dir_path( __FILE__ ) );
 define( 'WSP_URL', plugin_dir_url( __FILE__ ) );
@@ -45,9 +45,13 @@ require_once WSP_DIR . 'includes/class-core.php';
 require_once WSP_DIR . 'includes/class-assets.php';
 require_once WSP_DIR . 'includes/class-admin.php';
 require_once WSP_DIR . 'includes/class-updater.php';
+require_once WSP_DIR . 'includes/class-rest.php';
 
 // 부트스트랩: 모듈 등록 → 활성 모듈만 훅 연결.
 add_action( 'plugins_loaded', array( 'WSP_Core', 'boot' ) );
+
+// 워프글쓰기 「웹마스터 도구」가 부르는 REST(다음 인증 줄·네이버 메타·캐시 비우기).
+WSP_Rest::init();
 
 // 관리자 UI(대시보드 + 모듈 설정).
 WSP_Admin::init();

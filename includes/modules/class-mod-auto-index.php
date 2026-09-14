@@ -164,6 +164,19 @@ class WSP_Mod_Auto_Index extends WSP_Module {
 		update_option( 'wsp_mod_ads_manager', $ads );
 	}
 
+	/**
+	 * 네이버 소유 확인 메타 값을 넣는다(WSP_Rest 가 부른다). 메타 태그는 이 모듈이 켜져 있을 때만 나간다.
+	 *
+	 * @param string $code naver-site-verification 의 content 값.
+	 * @return bool 이 모듈이 켜져 있어 태그가 실제로 나가는가.
+	 */
+	public function put_naver_verification( $code ) {
+		$s                 = $this->settings();
+		$s['verify_naver'] = sanitize_text_field( (string) $code );
+		WSP_Settings::set( $this->id(), $s );
+		return $this->is_active();
+	}
+
 	/** 빙/네이버/구글 인증 메타 태그 출력(<head>). */
 	public function output_verification() {
 		$s = $this->settings();
