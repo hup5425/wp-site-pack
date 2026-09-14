@@ -4,7 +4,7 @@ Tags: utility, header footer, indexnow, ads.txt, social share, related posts, po
 Requires at least: 5.5
 Tested up to: 6.5
 Requires PHP: 7.2
-Stable tag: 0.4.0
+Stable tag: 0.4.1
 License: GPL-2.0+
 
 모듈형 사이트 운영 유틸리티 팩. 필요한 기능만 켜서 씁니다.

@@ -20,6 +20,9 @@ class WSP_SEO_Head {
 	/** 설명문을 문장 끝에서 자를 때, 문장 끝이 이 글자 수보다 앞이면 그냥 상한에서 자른다. */
 	const DESC_MIN_SENTENCE = 60;
 
+	/** 첫 문단이 이 글자 수보다 짧으면 다음 문단을 이어 붙인다. */
+	const DESC_MIN_PARAGRAPH = 30;
+
 	/** @var WSP_Mod_SEO */
 	protected $mod;
 
@@ -31,10 +34,15 @@ class WSP_SEO_Head {
 	}
 
 	public function register() {
-		add_filter( 'document_title_separator', array( $this, 'filter_separator' ) );
-		add_filter( 'document_title_parts', array( $this, 'filter_title_parts' ) );
+		// 우선순위 99 — 테마가 같은 필터를 우리보다 늦게(after_setup_theme 등) 걸면 기본값 10 끼리는
+		// 나중에 등록한 테마가 이긴다. zau.kr 실측에서 카테고리 제목이 「방송 맛집 – 다시쓰기」로
+		// 워드프레스 기본 en dash 가 나간 자리가 여기다.
+		add_filter( 'document_title_separator', array( $this, 'filter_separator' ), 99 );
+		add_filter( 'document_title_parts', array( $this, 'filter_title_parts' ), 99 );
 		add_filter( 'wp_robots', array( $this, 'filter_robots' ) );
-		// 우선순위 2 — canonical(rel_canonical, 10)보다 앞. canonical 은 워드프레스 기본을 그대로 둔다.
+		// 우선순위 2 — canonical(rel_canonical, 10)보다 앞.
+		// 글·페이지의 canonical 은 워드프레스 기본을 그대로 두고, 워드프레스가 내주지 않는
+		// 홈·카테고리·검색·작성자·날짜 보관함만 우리가 낸다(두 번 나가면 안 된다).
 		add_action( 'wp_head', array( $this, 'output' ), 2 );
 	}
 
@@ -114,7 +122,7 @@ class WSP_SEO_Head {
 
 	/**
 	 * 지금 화면의 설명문.
-	 *  글·페이지: 「설명문」 → rank_math_description(읽기만) → 손으로 쓴 요약 → 본문 첫 문장부터 160자.
+	 *  글·페이지: 「설명문」 → rank_math_description(읽기만) → 손으로 쓴 요약 → 본문 첫 문단.
 	 *  홈: 「사이트 설명문」 → 태그라인.
 	 *  카테고리: 카테고리 설명 → 없으면 빈 값(안 내보냄).
 	 *
@@ -171,7 +179,75 @@ class WSP_SEO_Head {
 			return self::cut( wp_strip_all_tags( $excerpt ) );
 		}
 
-		return self::cut( self::plain_text( (string) $post->post_content ) );
+		return self::cut( self::first_paragraph( (string) $post->post_content ) );
+	}
+
+	/**
+	 * 원본 본문 → 문단 목록(평문). 세 가지 모양을 차례로 본다. (순수 함수)
+	 *   ① core/paragraph 블록 → 그 블록들
+	 *   ② 블록이 없으면 <p> 태그 → 그 태그들
+	 *   ③ 둘 다 없으면 줄바꿈으로 나눈 줄
+	 * 빈 문단은 버린다.
+	 *
+	 * @param string $content post_content 원본.
+	 * @return string[]
+	 */
+	public static function paragraphs( $content ) {
+		$content = (string) $content;
+		$out     = array();
+
+		if ( preg_match_all( '/<!--\s*wp:paragraph(?:\s+\{[\s\S]*?\})?\s*-->([\s\S]*?)<!--\s*\/wp:paragraph\s*-->/i', $content, $m ) ) {
+			foreach ( $m[1] as $one ) {
+				$t = self::plain_text( $one );
+				if ( '' !== $t ) {
+					$out[] = $t;
+				}
+			}
+		}
+
+		if ( empty( $out ) && preg_match_all( '/<p\b[^>]*>([\s\S]*?)<\/p>/i', $content, $m2 ) ) {
+			foreach ( $m2[1] as $one ) {
+				$t = self::plain_text( $one );
+				if ( '' !== $t ) {
+					$out[] = $t;
+				}
+			}
+		}
+
+		if ( empty( $out ) ) {
+			foreach ( (array) preg_split( '/\R+/u', $content ) as $line ) {
+				$t = self::plain_text( $line );
+				if ( '' !== $t ) {
+					$out[] = $t;
+				}
+			}
+		}
+
+		return $out;
+	}
+
+	/**
+	 * 설명문에 쓸 본문 앞부분 = **첫 문단**. (순수 함수)
+	 * 첫 문단이 30자(DESC_MIN_PARAGRAPH)보다 짧으면 그 길이가 될 때까지 다음 문단을 이어 붙인다.
+	 * (Rank Math 도 첫 문단에서 끊었다 — zau.kr 실측: 「…정리합니다.」에서 끝났고 다음 문단인
+	 *  버튼 문구는 들어가지 않았다.)
+	 *
+	 * @param string $content post_content 원본.
+	 * @param int    $min     이 길이가 될 때까지 다음 문단을 이어 붙인다.
+	 * @return string
+	 */
+	public static function first_paragraph( $content, $min = self::DESC_MIN_PARAGRAPH ) {
+		$ps = self::paragraphs( $content );
+		if ( empty( $ps ) ) {
+			return '';
+		}
+		$text = $ps[0];
+		$i    = 1;
+		while ( mb_strlen( $text, 'UTF-8' ) < (int) $min && isset( $ps[ $i ] ) ) {
+			$text = trim( $text . ' ' . $ps[ $i ] );
+			$i++;
+		}
+		return $text;
 	}
 
 	/**
@@ -235,6 +311,32 @@ class WSP_SEO_Head {
 	/* ============================ (다) 로봇 메타 ============================ */
 
 	/**
+	 * 로봇 메타에 넣을 값. (순수 함수)
+	 *
+	 * 🔴 `-1` 은 반드시 **문자열**이어야 한다. 워드프레스 wp_robots() 는 값이 문자열일 때만
+	 *    `이름:값` 으로 찍고, 그 밖에 참이면 이름만 찍는다. 숫자 -1 로 두면 화면에는
+	 *    `max-snippet, max-video-preview` 로만 나간다(zau.kr 실측에서 이렇게 나갔다).
+	 *
+	 * @param bool $noindex 검색에 안 보이게 할 화면인가.
+	 * @return array
+	 */
+	public static function robots_values( $noindex ) {
+		if ( $noindex ) {
+			return array(
+				'noindex' => true,
+				'follow'  => true,
+			);
+		}
+		return array(
+			'index'             => true,
+			'follow'            => true,
+			'max-snippet'       => '-1',
+			'max-image-preview' => 'large',
+			'max-video-preview' => '-1',
+		);
+	}
+
+	/**
 	 * 워드프레스 표준 wp_robots 필터.
 	 *  글·페이지·카테고리·홈: index, follow, max-snippet:-1, max-image-preview:large, max-video-preview:-1
 	 *  사이트 안 검색·작성자 페이지·첨부파일 페이지·404: noindex, follow
@@ -249,37 +351,97 @@ class WSP_SEO_Head {
 
 		if ( $noindex ) {
 			unset( $robots['index'], $robots['max-snippet'], $robots['max-image-preview'], $robots['max-video-preview'] );
-			$robots['noindex'] = true;
-			$robots['follow']  = true;
-			return $robots;
+			return array_merge( $robots, self::robots_values( true ) );
 		}
 
 		if ( is_singular() || is_category() || is_tag() || is_tax() || is_front_page() || is_home() || is_author() ) {
 			unset( $robots['noindex'] );
-			$robots['index']             = true;
-			$robots['follow']            = true;
-			$robots['max-snippet']       = -1;
-			$robots['max-image-preview'] = 'large';
-			$robots['max-video-preview'] = -1;
+			return array_merge( $robots, self::robots_values( false ) );
 		}
 		return $robots;
 	}
 
 	/* ============================ (라) 공유 태그 ============================ */
 
-	/** 지금 화면의 주소. */
-	public function current_url() {
-		if ( is_front_page() ) {
-			return home_url( '/' );
-		}
+	/**
+	 * 지금 화면의 canonical 주소(= og:url 도 같은 값).
+	 *
+	 * 🔴 쿼리(`?s=test&wsp_nocache=…`)를 그대로 쓰지 않는다 — zau.kr 실측에서 검색 화면의
+	 *    og:url 에 캐시를 피하려고 붙인 쿼리까지 그대로 나갔다.
+	 * 모르는 화면이면 빈 문자열 — 그때는 canonical 을 안 낸다.
+	 *
+	 * @return string
+	 */
+	public function canonical_url() {
+		$url = '';
+
 		if ( is_singular() ) {
-			return (string) get_permalink( get_queried_object_id() );
-		}
-		if ( is_category() || is_tag() || is_tax() ) {
+			$url = (string) get_permalink( get_queried_object_id() );
+		} elseif ( is_front_page() ) {
+			$url = home_url( '/' );
+		} elseif ( is_home() ) {
+			$posts_page = (int) get_option( 'page_for_posts' );
+			$url        = $posts_page ? (string) get_permalink( $posts_page ) : home_url( '/' );
+		} elseif ( is_category() || is_tag() || is_tax() ) {
 			$link = get_term_link( get_queried_object() );
-			return is_wp_error( $link ) ? home_url( '/' ) : (string) $link;
+			$url  = is_wp_error( $link ) ? '' : (string) $link;
+		} elseif ( is_author() ) {
+			$url = (string) get_author_posts_url( (int) get_queried_object_id() );
+		} elseif ( is_search() ) {
+			$url = (string) get_search_link();
+		} elseif ( is_day() ) {
+			$url = (string) get_day_link( get_query_var( 'year' ), get_query_var( 'monthnum' ), get_query_var( 'day' ) );
+		} elseif ( is_month() ) {
+			$url = (string) get_month_link( get_query_var( 'year' ), get_query_var( 'monthnum' ) );
+		} elseif ( is_year() ) {
+			$url = (string) get_year_link( get_query_var( 'year' ) );
+		} elseif ( is_post_type_archive() ) {
+			$type = get_query_var( 'post_type' );
+			$link = is_string( $type ) ? get_post_type_archive_link( $type ) : false;
+			$url  = $link ? (string) $link : '';
 		}
-		return home_url( add_query_arg( array() ) );
+
+		if ( '' === $url ) {
+			return '';
+		}
+
+		// 2쪽·3쪽이면 그 쪽 주소가 canonical 이다(글·페이지는 워드프레스가 알아서 한다).
+		if ( ! is_singular() ) {
+			$url = self::paged_url( $url, (int) get_query_var( 'paged' ) );
+		}
+		return $url;
+	}
+
+	/**
+	 * 목록의 2쪽부터의 주소. (순수 함수)
+	 *  쿼리가 없는 주소면 `/page/2/`, 검색처럼 쿼리가 붙은 주소면 `&paged=2`.
+	 *
+	 * @param string $url
+	 * @param int    $paged 1 이하면 그대로 돌려준다.
+	 * @return string
+	 */
+	public static function paged_url( $url, $paged ) {
+		$url   = (string) $url;
+		$paged = (int) $paged;
+		if ( $paged < 2 || '' === $url ) {
+			return $url;
+		}
+		$parts = explode( '?', $url, 2 );
+		$base  = $parts[0];
+		$query = isset( $parts[1] ) ? $parts[1] : '';
+
+		if ( '' !== $query ) {
+			$query = preg_replace( '/(?:^|&)paged=[0-9]*/', '', $query );
+			$query = trim( (string) $query, '&' );
+			return $base . '?' . ( '' !== $query ? $query . '&' : '' ) . 'paged=' . $paged;
+		}
+		return rtrim( $base, '/' ) . '/page/' . $paged . '/';
+	}
+
+	/** 지금 화면의 주소(공유 태그가 쓰는 값 — canonical 과 같다). */
+	public function current_url() {
+		$url = $this->canonical_url();
+		return ( '' !== $url ) ? $url : home_url( '/' );
 	}
 
 	/**
@@ -368,16 +530,25 @@ class WSP_SEO_Head {
 		return '';
 	}
 
-	/** 머리말 출력 — 설명문 · 공유 태그. */
+	/** 머리말 출력 — canonical(워드프레스가 안 내는 화면만) · 설명문 · 공유 태그. */
 	public function output() {
 		$title = $this->title_text();
 		$desc  = $this->description();
 		$url   = $this->current_url();
 		$img   = $this->share_image();
-		$site  = get_bloginfo( 'name', 'display' );
+		$site  = $this->mod->site_name();
 
 		$lines = array();
 		$lines[] = '<!-- 사이트 팩 · SEO -->';
+
+		// 워드프레스 기본 rel_canonical 은 **글·페이지에만** 낸다. 홈·카테고리·태그·작성자·검색·
+		// 날짜 보관함은 아무도 안 내서 zau.kr 실측에서 canonical 이 통째로 비어 있었다.
+		if ( ! is_singular() && ! is_404() ) {
+			$canon = $this->canonical_url();
+			if ( '' !== $canon ) {
+				$lines[] = '<link rel="canonical" href="' . esc_url( $canon ) . '">';
+			}
+		}
 
 		if ( '' !== $desc ) {
 			$lines[] = '<meta name="description" content="' . esc_attr( $desc ) . '">';
@@ -396,8 +567,8 @@ class WSP_SEO_Head {
 		if ( $is_article ) {
 			$post = get_post();
 			if ( $post ) {
-				$lines[] = '<meta property="article:published_time" content="' . esc_attr( self::iso8601( $post->post_date_gmt ) ) . '">';
-				$lines[] = '<meta property="article:modified_time" content="' . esc_attr( self::iso8601( $post->post_modified_gmt ) ) . '">';
+				$lines[] = '<meta property="article:published_time" content="' . esc_attr( self::published_iso( $post ) ) . '">';
+				$lines[] = '<meta property="article:modified_time" content="' . esc_attr( self::modified_iso( $post ) ) . '">';
 				$cats    = get_the_category( $post->ID );
 				if ( ! empty( $cats ) && isset( $cats[0]->name ) ) {
 					$lines[] = '<meta property="article:section" content="' . esc_attr( $cats[0]->name ) . '">';
@@ -431,6 +602,46 @@ class WSP_SEO_Head {
 		}
 
 		echo "\n" . implode( "\n", $lines ) . "\n"; // phpcs:ignore WordPress.Security.EscapeOutput -- 줄마다 이미 이스케이프했다.
+	}
+
+	/**
+	 * 글의 발행 시각 — **사이트 시간대**로 (+09:00).
+	 *
+	 * 🔴 `post_date_gmt` 를 그대로 쓰면 +00:00 으로 나간다. Rank Math 는 사이트 시간대로 냈고,
+	 *    검색엔진은 이 값을 그대로 읽으므로 사이트 시간대로 맞춘다(zau.kr 실측 차이).
+	 *
+	 * @param WP_Post|null $post
+	 * @return string
+	 */
+	public static function published_iso( $post ) {
+		return self::post_iso( $post, false );
+	}
+
+	/** 글의 수정 시각 — 사이트 시간대. */
+	public static function modified_iso( $post ) {
+		return self::post_iso( $post, true );
+	}
+
+	/**
+	 * 글 시각 → ISO 8601(사이트 시간대).
+	 * get_the_date·get_the_modified_date 가 사이트 시간대를 붙여 준다. 그 함수를 못 쓰는
+	 * 자리(검산 등)에서는 GMT 값으로 되돌아간다.
+	 *
+	 * @param WP_Post|null $post
+	 * @param bool         $modified 수정 시각인가.
+	 * @return string
+	 */
+	protected static function post_iso( $post, $modified ) {
+		if ( ! $post ) {
+			return '';
+		}
+		if ( function_exists( 'get_the_date' ) && function_exists( 'get_the_modified_date' ) ) {
+			$d = $modified ? get_the_modified_date( 'c', $post ) : get_the_date( 'c', $post );
+			if ( is_string( $d ) && '' !== $d ) {
+				return $d;
+			}
+		}
+		return self::iso8601( $modified ? $post->post_modified_gmt : $post->post_date_gmt );
 	}
 
 	/**

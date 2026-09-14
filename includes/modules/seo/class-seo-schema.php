@@ -59,7 +59,7 @@ class WSP_SEO_Schema {
 			'@type'     => 'WebSite',
 			'@id'       => $site_id,
 			'url'       => $home,
-			'name'      => get_bloginfo( 'name', 'display' ),
+			'name'      => $this->mod->site_name(),
 			'publisher' => array( '@id' => $org_id ),
 			'inLanguage' => get_bloginfo( 'language' ),
 		);
@@ -72,7 +72,8 @@ class WSP_SEO_Schema {
 		$org = array(
 			'@type' => 'Organization',
 			'@id'   => $org_id,
-			'name'  => ( '' !== trim( (string) $s['org_name'] ) ) ? trim( (string) $s['org_name'] ) : get_bloginfo( 'name', 'display' ),
+			// 「조직 이름」이 비어 있으면 「사이트 이름」을 쓴다.
+			'name'  => ( '' !== trim( (string) $s['org_name'] ) ) ? trim( (string) $s['org_name'] ) : $this->mod->site_name(),
 			'url'   => $home,
 		);
 		$logo = trim( (string) $s['org_logo'] );
@@ -115,8 +116,8 @@ class WSP_SEO_Schema {
 		$title    = $head->title_text();
 		$desc     = $head->post_description( $post );
 		$img      = $head->share_image();
-		$published = WSP_SEO_Head::iso8601( $post->post_date_gmt );
-		$modified  = WSP_SEO_Head::iso8601( $post->post_modified_gmt );
+		$published = WSP_SEO_Head::published_iso( $post ); // 사이트 시간대(+09:00).
+		$modified  = WSP_SEO_Head::modified_iso( $post );
 
 		$webpage = array(
 			'@type'      => 'WebPage',
@@ -159,14 +160,20 @@ class WSP_SEO_Schema {
 			if ( '' === $author ) {
 				$author = (string) get_the_author_meta( 'display_name', $post->post_author );
 			}
-			$plain   = WSP_SEO_Head::plain_text( (string) $post->post_content );
-			$words   = preg_split( '/\s+/u', $plain, -1, PREG_SPLIT_NO_EMPTY );
+			$plain     = WSP_SEO_Head::plain_text( (string) $post->post_content );
+			$words     = preg_split( '/\s+/u', $plain, -1, PREG_SPLIT_NO_EMPTY );
+			$author_at = array( '@type' => 'Person', 'name' => $author );
+			$author_url = get_author_posts_url( (int) $post->post_author );
+			if ( $author_url && ! is_wp_error( $author_url ) ) {
+				$author_at['url'] = (string) $author_url; // 작성자 보관함 주소.
+			}
 			$article = array(
 				'@type'            => in_array( $s['article_type'], WSP_Mod_SEO::ARTICLE_TYPES, true ) ? $s['article_type'] : 'BlogPosting',
 				'@id'              => $url . '#article',
 				'headline'         => $title,
+				'name'             => $title, // Rank Math 도 headline 과 같은 값을 넣었다.
 				'mainEntityOfPage' => array( '@id' => $page_id ),
-				'author'           => array( '@type' => 'Person', 'name' => $author ),
+				'author'           => $author_at,
 				'publisher'        => array( '@id' => $org_id ),
 				'wordCount'        => is_array( $words ) ? count( $words ) : 0,
 				'inLanguage'       => get_bloginfo( 'language' ),

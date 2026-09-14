@@ -4,9 +4,16 @@
  *
  * 워드프레스가 없어도 확인할 수 있는 **순수 함수**만 본다:
  *   · 설명문 자르기(WSP_SEO_Head::cut · plain_text · first_image_url · iso8601)
+ *   · 설명문에 쓸 첫 문단 고르기(WSP_SEO_Head::paragraphs · first_paragraph)
+ *   · 로봇 메타 값(WSP_SEO_Head::robots_values — `-1` 이 문자열인지)
+ *   · 글 시각을 사이트 시간대로(WSP_SEO_Head::published_iso · modified_iso)
+ *   · 2쪽부터의 주소(WSP_SEO_Head::paged_url)
  *   · FAQ 뽑기(WSP_SEO_Schema::faq_from_blocks · faq_from_headings)
  *   · 유튜브 id 뽑기(WSP_SEO_Schema::youtube_ids)
  *   · 사이트맵 나누기·주소 가르기(WSP_SEO_Sitemap::chunk_total · chunk_of_index · parse_path)
+ *   · 사이트맵의 홈 한 줄(WSP_SEO_Sitemap::home_url_entry_xml)
+ *   · robots.txt 의 Sitemap 줄(WSP_SEO_Sitemap::add_sitemap_line)
+ *   · Rank Math 설정 이어받기(WSP_Mod_SEO::migrate_from_rank_math)
  *
  * 워드프레스 함수는 몇 개만 여기서 흉내 낸다(아래 「흉내 낸 함수」). 화면·DB 가 필요한 것은
  * 여기서 못 본다 — 그건 zau.kr 에서 눈으로 확인한다.
@@ -62,6 +69,46 @@ if ( ! function_exists( 'sanitize_key' ) ) {
 	function sanitize_key( $s ) {
 		return preg_replace( '/[^a-z0-9_\-]/', '', strtolower( (string) $s ) );
 	}
+}
+if ( ! function_exists( 'esc_url' ) ) {
+	function esc_url( $s ) {
+		return htmlspecialchars( (string) $s, ENT_QUOTES );
+	}
+}
+if ( ! function_exists( 'esc_html' ) ) {
+	function esc_html( $s ) {
+		return htmlspecialchars( (string) $s, ENT_QUOTES );
+	}
+}
+
+/** 사이트 시간대(여기서는 +09:00)로 바꾼 시각 — 진짜 get_the_date 가 하는 일. */
+function 검산_사이트시각( $local ) {
+	$local = (string) $local;
+	return ( '' === $local ) ? '' : str_replace( ' ', 'T', $local ) . '+09:00';
+}
+if ( ! function_exists( 'get_the_date' ) ) {
+	function get_the_date( $format, $post ) {
+		return 검산_사이트시각( $post->post_date );
+	}
+	function get_the_modified_date( $format, $post ) {
+		return 검산_사이트시각( $post->post_modified );
+	}
+}
+
+/**
+ * 워드프레스 wp_robots() 가 로봇 메타를 찍는 방식 그대로.
+ * 값이 **문자열**일 때만 `이름:값`, 그 밖에 참이면 이름만.
+ */
+function 검산_로봇줄( $robots ) {
+	$out = array();
+	foreach ( $robots as $이름 => $값 ) {
+		if ( is_string( $값 ) ) {
+			$out[] = $이름 . ':' . $값;
+		} elseif ( $값 ) {
+			$out[] = $이름;
+		}
+	}
+	return implode( ', ', $out );
 }
 
 /** 모듈 뼈대 — default_settings()·sanitize() 만 보려고 최소한만 흉내 낸다. */
@@ -172,6 +219,79 @@ $소수결과 = WSP_SEO_Head::cut( $소수 );
 확인( 'GMT → ISO 8601', WSP_SEO_Head::iso8601( '2026-09-14 01:02:03' ), '2026-09-14T01:02:03+00:00' );
 확인( '빈 시각은 빈 값', WSP_SEO_Head::iso8601( '0000-00-00 00:00:00' ), '' );
 
+/* ================= 1-1. 설명문은 **첫 문단**까지만 (zau.kr 실측) ================= */
+
+// Rank Math 는 첫 단락 「…정리합니다.」에서 끝냈는데 우리는 다음 단락(버튼 문구)까지 이어 붙였다.
+$본문블록 = "<!-- wp:paragraph -->\n<p>2026년 청년 월세 지원의 신청 방법과 필요한 서류를 한눈에 보기 좋게 정리합니다.</p>\n<!-- /wp:paragraph -->\n"
+	. "<!-- wp:buttons -->\n<div class=\"wp-block-buttons\"><a class=\"wp-block-button__link\">신청하러 가기</a></div>\n<!-- /wp:buttons -->\n"
+	. "<!-- wp:paragraph -->\n<p>두 번째 문단입니다.</p>\n<!-- /wp:paragraph -->";
+확인(
+	'첫 문단만 쓴다(다음 문단·버튼 문구는 안 붙는다)',
+	WSP_SEO_Head::first_paragraph( $본문블록 ),
+	'2026년 청년 월세 지원의 신청 방법과 필요한 서류를 한눈에 보기 좋게 정리합니다.'
+);
+
+확인(
+	'블록이 없는 옛 글은 첫 <p> 태그',
+	WSP_SEO_Head::first_paragraph( '<h2>소제목</h2><p>옛 글의 첫 문단입니다. 블록이 없는 글에서도 여기까지가 설명문이 됩니다.</p><p>둘째 문단.</p>' ),
+	'옛 글의 첫 문단입니다. 블록이 없는 글에서도 여기까지가 설명문이 됩니다.'
+);
+
+확인(
+	'블록도 <p> 도 없으면 첫 줄바꿈 전까지',
+	WSP_SEO_Head::first_paragraph( "줄만 있는 글의 첫 줄입니다. 이 줄이 설명문이 됩니다.\n둘째 줄." ),
+	'줄만 있는 글의 첫 줄입니다. 이 줄이 설명문이 됩니다.'
+);
+
+확인(
+	'첫 문단이 30자 미만이면 다음 문단을 이어 붙인다',
+	WSP_SEO_Head::first_paragraph( "<!-- wp:paragraph -->\n<p>안녕하세요.</p>\n<!-- /wp:paragraph -->\n<!-- wp:paragraph -->\n<p>오늘은 청년 월세 지원을 살펴봅니다.</p>\n<!-- /wp:paragraph -->" ),
+	'안녕하세요. 오늘은 청년 월세 지원을 살펴봅니다.'
+);
+
+확인( '문단이 하나도 없으면 빈 값', WSP_SEO_Head::first_paragraph( '   ' ), '' );
+
+// 첫 문단이 160자를 넘으면 그 안의 마지막 문장 끝에서 자른다(설명문 규칙은 그대로).
+$긴문단 = '<p>' . str_repeat( '가', 70 ) . '. ' . str_repeat( '나', 120 ) . '</p><p>둘째 문단</p>';
+확인(
+	'긴 첫 문단은 160자 안 마지막 문장 끝에서',
+	WSP_SEO_Head::cut( WSP_SEO_Head::first_paragraph( $긴문단 ) ),
+	str_repeat( '가', 70 ) . '.'
+);
+
+확인( '문단 목록 세기', count( WSP_SEO_Head::paragraphs( $본문블록 ) ), 2 );
+
+/* ================= 1-2. 로봇 메타의 `-1` 은 문자열 (zau.kr 실측) ================= */
+
+$로봇 = WSP_SEO_Head::robots_values( false );
+확인( 'max-snippet 은 문자열 -1', $로봇['max-snippet'], '-1' );
+확인( 'max-video-preview 도 문자열 -1', $로봇['max-video-preview'], '-1' );
+확인(
+	'그래서 화면에 -1 이 찍힌다(숫자로 두면 이름만 나갔다)',
+	검산_로봇줄( $로봇 ),
+	'index, follow, max-snippet:-1, max-image-preview:large, max-video-preview:-1'
+);
+확인( '검색·작성자·첨부·404 는 noindex, follow', 검산_로봇줄( WSP_SEO_Head::robots_values( true ) ), 'noindex, follow' );
+
+/* ================= 1-3. 글 시각은 사이트 시간대(+09:00) ================= */
+
+$글 = (object) array(
+	'post_date'         => '2026-09-14 10:02:03',
+	'post_date_gmt'     => '2026-09-14 01:02:03',
+	'post_modified'     => '2026-09-14 11:30:00',
+	'post_modified_gmt' => '2026-09-14 02:30:00',
+);
+확인( '발행 시각은 사이트 시간대', WSP_SEO_Head::published_iso( $글 ), '2026-09-14T10:02:03+09:00' );
+확인( '수정 시각도 사이트 시간대', WSP_SEO_Head::modified_iso( $글 ), '2026-09-14T11:30:00+09:00' );
+확인( '글이 없으면 빈 값', WSP_SEO_Head::published_iso( null ), '' );
+
+/* ================= 1-4. 2쪽부터의 주소(canonical·og:url) ================= */
+
+확인( '1쪽은 그대로', WSP_SEO_Head::paged_url( 'https://zau.kr/category/food/', 1 ), 'https://zau.kr/category/food/' );
+확인( '2쪽은 /page/2/', WSP_SEO_Head::paged_url( 'https://zau.kr/category/food/', 2 ), 'https://zau.kr/category/food/page/2/' );
+확인( '쿼리가 붙은 주소는 paged 로', WSP_SEO_Head::paged_url( 'https://zau.kr/?s=test', 3 ), 'https://zau.kr/?s=test&paged=3' );
+확인( '이미 있던 paged 는 하나만', WSP_SEO_Head::paged_url( 'https://zau.kr/?s=test&paged=2', 3 ), 'https://zau.kr/?s=test&paged=3' );
+
 /* ============================ 2. FAQ 뽑기 ============================ */
 
 // ① 옛 rank-math/faq-block 의 속성 JSON.
@@ -264,6 +384,87 @@ $쌍3   = WSP_SEO_Schema::faq_from_headings( $본문3 );
 확인( '/category-sitemap.xml', WSP_SEO_Sitemap::parse_path( 'category-sitemap.xml' ), array( 'what' => 'category' ) );
 확인( '사이트맵이 아닌 주소', WSP_SEO_Sitemap::parse_path( '2026/09/글제목' ), null );
 확인( '옛 주소는 여기서 안 잡는다(301 로 따로 처리)', WSP_SEO_Sitemap::parse_path( 'wp-sitemap.xml' ), null );
+
+/* ---- post-sitemap1.xml 맨 앞의 홈 한 줄 (zau.kr 실측: Rank Math 도 여기에 홈을 넣어 201개였다) ---- */
+
+확인(
+	'홈 한 줄(loc + lastmod)',
+	WSP_SEO_Sitemap::home_url_entry_xml( 'https://zau.kr/', '2026-09-14T11:30:00+09:00' ),
+	"\t<url>\n\t\t<loc>https://zau.kr/</loc>\n\t\t<lastmod>2026-09-14T11:30:00+09:00</lastmod>\n\t</url>\n"
+);
+확인(
+	'수정 시각을 모르면 lastmod 를 안 넣는다',
+	WSP_SEO_Sitemap::home_url_entry_xml( 'https://zau.kr/', '' ),
+	"\t<url>\n\t\t<loc>https://zau.kr/</loc>\n\t</url>\n"
+);
+// 홈은 **글 수로 세지 않는다** — 그래서 글 200편이면 파일은 그대로 1개(주소만 201개)다.
+확인( '홈을 넣어도 파일 개수는 그대로', WSP_SEO_Sitemap::chunk_total( 200, 200 ), 1 );
+
+/* ---- robots.txt 의 Sitemap 줄 (워드프레스 기본 사이트맵을 끄면 이 줄이 사라졌다) ---- */
+
+확인(
+	'Sitemap 줄이 없으면 끝에 더한다',
+	WSP_SEO_Sitemap::add_sitemap_line( "User-agent: *\nDisallow: /wp-admin/\n", 'https://zau.kr/sitemap_index.xml' ),
+	"User-agent: *\nDisallow: /wp-admin/\n\nSitemap: https://zau.kr/sitemap_index.xml\n"
+);
+확인(
+	'이미 있으면 그대로 둔다',
+	WSP_SEO_Sitemap::add_sitemap_line( "User-agent: *\n\nSitemap: https://zau.kr/다른사이트맵.xml\n", 'https://zau.kr/sitemap_index.xml' ),
+	"User-agent: *\n\nSitemap: https://zau.kr/다른사이트맵.xml\n"
+);
+확인(
+	'대소문자가 달라도 있는 것으로 본다',
+	WSP_SEO_Sitemap::add_sitemap_line( "sitemap: https://zau.kr/a.xml", 'https://zau.kr/sitemap_index.xml' ),
+	'sitemap: https://zau.kr/a.xml'
+);
+
+/* ============================ 5. Rank Math 설정 이어받기 ============================ */
+
+// zau.kr 실측값.
+$랭크매스 = array(
+	'titles'  => array(
+		'website_name'                 => 'zau',
+		'knowledgegraph_type'           => 'person',
+		'knowledgegraph_name'           => 'zau',
+		'title_separator'               => '-',
+		'pt_post_default_article_type'  => 'BlogPosting',
+		'author_robots'                 => array( 'noindex' ),
+		'homepage_title'                => '%sitename% %page% %sep% %sitedesc%', // 치환 변수 — 건너뛴다.
+	),
+	'general' => array( 'attachment_redirect_urls' => 'on' ),
+	'sitemap' => array( 'items_per_page' => 200 ),
+);
+$기본설정 = $모듈->default_settings();
+$이어받기 = WSP_Mod_SEO::migrate_from_rank_math( $기본설정, $기본설정, $랭크매스 );
+
+확인( '사이트 이름을 이어받는다', $이어받기['settings']['site_name'], 'zau' );
+확인( '조직 이름을 이어받는다', $이어받기['settings']['org_name'], 'zau' );
+확인( '옮긴 것이 화면에 보일 목록으로 남는다', $이어받기['moved'], array( '사이트 이름' => 'zau', '조직 이름' => 'zau' ) );
+확인( '값이 같은 칸(구분 기호·글 종류·글 수)은 옮긴 것으로 세지 않는다', isset( $이어받기['moved']['구분 기호'] ), false );
+
+// 이미 고쳐 둔 칸은 덮어쓰지 않는다.
+$내설정 = $기본설정;
+$내설정['site_name'] = '다시쓰기';
+$지킴 = WSP_Mod_SEO::migrate_from_rank_math( $내설정, $기본설정, $랭크매스 );
+확인( '내가 고쳐 둔 칸은 그대로', $지킴['settings']['site_name'], '다시쓰기' );
+
+// %…% 치환 변수가 든 값은 건너뛴다.
+$변수 = WSP_Mod_SEO::migrate_from_rank_math(
+	$기본설정,
+	$기본설정,
+	array( 'titles' => array( 'homepage_description' => '%sitedesc%' ), 'general' => array(), 'sitemap' => array() )
+);
+확인( '치환 변수가 든 값은 안 옮긴다', $변수['settings']['site_description'], '' );
+
+// 한 파일에 글 수는 10~2000 안으로.
+$글수 = WSP_Mod_SEO::migrate_from_rank_math(
+	$기본설정,
+	$기본설정,
+	array( 'titles' => array(), 'general' => array(), 'sitemap' => array( 'items_per_page' => 5000 ) )
+);
+확인( '이어받은 글 수도 2000 안으로', $글수['settings']['sitemap_per_page'], 2000 );
+
+확인( 'Rank Math 설정이 없으면 아무것도 안 옮긴다', WSP_Mod_SEO::migrate_from_rank_math( $기본설정, $기본설정, array() )['moved'], array() );
 
 /* ------------------------------ 결과 ------------------------------ */
 

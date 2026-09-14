@@ -11,8 +11,9 @@
  *  지키는 것(기획서 4.8 원칙):
  *   - Rank Math 가 켜져 있으면 머리말 출력 · 사이트맵 · 첨부파일 처리를 **모두 쉰다**.
  *     같은 태그가 두 번 나가면 안 된다. 스니펫 편집기만 그대로 보인다(값을 우리 쪽으로 옮기는 자리).
- *   - robots.txt 는 Ads 매니저, 인증 메타·인증 파일·IndexNow 는 자동 인덱싱 모듈이 맡는다.
- *     이 모듈은 건드리지 않는다.
+ *   - robots.txt 의 내용은 Ads 매니저, 인증 메타·인증 파일·IndexNow 는 자동 인덱싱 모듈이 맡는다.
+ *     이 모듈이 robots.txt 에 넣는 것은 **`Sitemap:` 한 줄뿐**이다(그 줄이 없을 때만.
+ *     seo/class-seo-sitemap.php). Ads 매니저가 robots.txt 를 통째로 바꾸면 그쪽이 이긴다.
  *   - 페이지 캐시(Breeze+CDN)가 있으므로 방문자마다 달라지는 값을 HTML 에 넣지 않는다.
  *   - 값을 읽을 때 the_content 필터 결과를 쓰지 않는다(관련 글·소셜 공유가 거기 붙는다).
  *     원본 post_content 를 읽는다.
@@ -37,6 +38,28 @@ class WSP_Mod_SEO extends WSP_Module {
 	/** 「첨부파일 페이지」에 쓸 수 있는 값. */
 	const ATTACHMENT_MODES = array( 'to_post', 'wp_default' );
 
+	/** Rank Math 에서 이어받은 것을 적어 두는 옵션 이름(설정 화면에 한 줄로 보인다). */
+	const MIGRATED_OPTION = 'wsp_seo_migrated';
+
+	/** [Rank Math 설정 가져오기] 단추 이름. */
+	const IMPORT_FIELD = 'wsp_seo_import_rankmath';
+
+	/**
+	 * Rank Math 설정 → 우리 설정. (열쇠 = Rank Math 옵션 묶음·그 안의 이름, 값 = 우리 설정 열쇠·화면 이름)
+	 * 값에 `%…%` 치환 변수가 들어 있으면 건너뛴다(그대로 내보내면 변수 글자가 화면에 찍힌다).
+	 */
+	const RANK_MATH_MAP = array(
+		array( 'titles',  'website_name',                 'site_name',           '사이트 이름',     'text' ),
+		array( 'titles',  'website_alternate_name',       'site_alternate_name', '사이트 다른 이름', 'text' ),
+		array( 'titles',  'knowledgegraph_name',          'org_name',            '조직 이름',       'text' ),
+		array( 'titles',  'knowledgegraph_logo',          'org_logo',            '로고',           'url' ),
+		array( 'titles',  'title_separator',              'title_separator',     '구분 기호',       'text' ),
+		array( 'titles',  'pt_post_default_article_type', 'article_type',        '글 종류',         'article_type' ),
+		array( 'titles',  'homepage_description',         'site_description',    '사이트 설명문',    'text' ),
+		array( 'titles',  'open_graph_image',             'default_share_image', '기본 공유 사진',   'url' ),
+		array( 'sitemap', 'items_per_page',               'sitemap_per_page',    '사이트맵 한 파일에 글 수', 'int' ),
+	);
+
 	/** @var WSP_SEO_Head|null */
 	protected $head = null;
 	/** @var WSP_SEO_Schema|null */
@@ -59,6 +82,7 @@ class WSP_Mod_SEO extends WSP_Module {
 		return array(
 			'title_append_sitename' => 0,            // 「글 제목 뒤에 사이트명 붙이기」
 			'title_separator'       => '-',          // 「구분 기호」
+			'site_name'             => '',           // 「사이트 이름」(비면 블로그 이름)
 			'site_description'      => '',           // 「사이트 설명문」(홈 설명문)
 			'default_share_image'   => '',           // 「기본 공유 사진」
 			'org_name'              => '',           // 「조직 이름」(비면 사이트명)
@@ -99,9 +123,10 @@ class WSP_Mod_SEO extends WSP_Module {
 			$sep = '-';
 		}
 
-		return array(
+		$out = array(
 			'title_append_sitename' => empty( $input['title_append_sitename'] ) ? 0 : 1,
 			'title_separator'       => $sep,
+			'site_name'             => isset( $input['site_name'] ) ? sanitize_text_field( (string) $input['site_name'] ) : '',
 			'site_description'      => isset( $input['site_description'] ) ? sanitize_text_field( (string) $input['site_description'] ) : '',
 			'default_share_image'   => isset( $input['default_share_image'] ) ? esc_url_raw( (string) $input['default_share_image'] ) : '',
 			'org_name'              => isset( $input['org_name'] ) ? sanitize_text_field( (string) $input['org_name'] ) : '',
@@ -115,6 +140,132 @@ class WSP_Mod_SEO extends WSP_Module {
 			'sitemap_per_page'      => max( 10, min( 2000, (int) ( $input['sitemap_per_page'] ?? 200 ) ) ),
 			'attachment_page'       => $attach,
 		);
+
+		// [Rank Math 설정 가져오기] 를 눌렀을 때 — 저장과 같은 걸음에서 이어받는다.
+		if ( ! empty( $input[ self::IMPORT_FIELD ] ) ) {
+			$out = $this->import_rank_math( $out );
+		}
+
+		return $out;
+	}
+
+	/* ------------------------------ Rank Math 설정 이어받기 ------------------------------ */
+
+	/** Rank Math 가 저장해 둔 설정 세 묶음(없으면 빈 배열). */
+	public function rank_math_options() {
+		if ( ! function_exists( 'get_option' ) ) {
+			return array( 'titles' => array(), 'general' => array(), 'sitemap' => array() );
+		}
+		$get = function ( $name ) {
+			$v = get_option( $name, array() );
+			return is_array( $v ) ? $v : array();
+		};
+		return array(
+			'titles'  => $get( 'rank-math-options-titles' ),
+			'general' => $get( 'rank-math-options-general' ),
+			'sitemap' => $get( 'rank-math-options-sitemap' ),
+		);
+	}
+
+	/**
+	 * Rank Math 설정을 우리 설정으로 옮기고, 옮긴 것을 옵션에 적어 둔다.
+	 *
+	 * @param array $current 지금 설정.
+	 * @return array 옮긴 뒤의 설정.
+	 */
+	public function import_rank_math( $current ) {
+		$res = self::migrate_from_rank_math( $current, $this->default_settings(), $this->rank_math_options() );
+		if ( function_exists( 'update_option' ) ) {
+			update_option(
+				self::MIGRATED_OPTION,
+				array(
+					'at'    => function_exists( 'current_time' ) ? current_time( 'mysql' ) : gmdate( 'Y-m-d H:i:s' ),
+					'moved' => $res['moved'],
+				)
+			);
+		}
+		return $res['settings'];
+	}
+
+	/**
+	 * Rank Math 설정 → 우리 설정. **아직 기본값인 칸에만** 옮긴다(사장님이 고쳐 둔 값을 덮지 않는다).
+	 * (순수 함수 — tools/seo_검산.php 가 이 규칙을 검산한다.)
+	 *
+	 * @param array $current  지금 설정.
+	 * @param array $defaults 기본값.
+	 * @param array $rm       array('titles'=>…, 'general'=>…, 'sitemap'=>…)
+	 * @return array array('settings'=>새 설정, 'moved'=>array(화면 이름 => 옮긴 값))
+	 */
+	public static function migrate_from_rank_math( $current, $defaults, $rm ) {
+		$out   = is_array( $current ) ? $current : array();
+		$moved = array();
+
+		$titles  = isset( $rm['titles'] ) && is_array( $rm['titles'] ) ? $rm['titles'] : array();
+		$general = isset( $rm['general'] ) && is_array( $rm['general'] ) ? $rm['general'] : array();
+		$sitemap = isset( $rm['sitemap'] ) && is_array( $rm['sitemap'] ) ? $rm['sitemap'] : array();
+		$group   = array( 'titles' => $titles, 'general' => $general, 'sitemap' => $sitemap );
+
+		foreach ( self::RANK_MATH_MAP as $row ) {
+			list( $bundle, $rm_key, $our_key, $label, $kind ) = $row;
+
+			if ( ! isset( $group[ $bundle ][ $rm_key ] ) || ! array_key_exists( $our_key, $defaults ) ) {
+				continue;
+			}
+			// 이미 사장님이 고친 칸은 건드리지 않는다.
+			if ( ! isset( $out[ $our_key ] ) || $out[ $our_key ] !== $defaults[ $our_key ] ) {
+				continue;
+			}
+
+			$raw = $group[ $bundle ][ $rm_key ];
+			if ( is_array( $raw ) || null === $raw ) {
+				continue;
+			}
+			$raw = trim( (string) $raw );
+			if ( '' === $raw || preg_match( '/%[^%\s]+%/', $raw ) ) {
+				continue; // 빈 값·치환 변수(%title% 같은 것)는 건너뛴다.
+			}
+
+			$value = null;
+			switch ( $kind ) {
+				case 'int':
+					$value = max( 10, min( 2000, (int) $raw ) );
+					break;
+				case 'url':
+					$value = preg_match( '#^https?://#i', $raw ) ? $raw : null;
+					break;
+				case 'article_type':
+					$value = in_array( $raw, self::ARTICLE_TYPES, true ) ? $raw : null;
+					break;
+				default:
+					$value = $raw;
+			}
+			if ( null === $value || $value === $out[ $our_key ] ) {
+				continue;
+			}
+			$out[ $our_key ]  = $value;
+			$moved[ $label ] = (string) $value;
+		}
+
+		// 첨부파일 페이지 — Rank Math 가 「글로 보내기」였으면 우리도 그렇게.
+		if ( isset( $general['attachment_redirect_urls'] ) && 'on' === $general['attachment_redirect_urls']
+			&& isset( $out['attachment_page'], $defaults['attachment_page'] )
+			&& $out['attachment_page'] === $defaults['attachment_page']
+			&& 'to_post' !== $out['attachment_page'] ) {
+			$out['attachment_page']       = 'to_post';
+			$moved['첨부파일 페이지'] = '글로 보내기';
+		}
+
+		// 작성자 페이지 — Rank Math 가 noindex 였으면 「검색 노출」을 끈다.
+		$author_robots = isset( $titles['author_robots'] ) ? (array) $titles['author_robots'] : array();
+		if ( in_array( 'noindex', $author_robots, true )
+			&& isset( $out['author_archive_index'], $defaults['author_archive_index'] )
+			&& (int) $out['author_archive_index'] === (int) $defaults['author_archive_index']
+			&& 0 !== (int) $out['author_archive_index'] ) {
+			$out['author_archive_index']          = 0;
+			$moved['작성자 페이지 검색 노출'] = '끔';
+		}
+
+		return array( 'settings' => $out, 'moved' => $moved );
 	}
 
 	/* ------------------------------ 부품 ------------------------------ */
@@ -181,8 +332,22 @@ class WSP_Mod_SEO extends WSP_Module {
 		add_action( 'wp_enqueue_scripts', array( $this, 'front_assets' ) );
 	}
 
-	/** 활성화 시 — 사이트맵 주소 규칙을 심고 다시 깐다. */
+	/**
+	 * 이 모듈이 쓰는 「사이트 이름」. 비면 블로그 이름.
+	 * (WebSite.name · og:site_name · 조직 이름이 비었을 때의 Organization.name — 세 자리가 이것을 쓴다.
+	 *  Rank Math 는 「사이트 이름」을 따로 두어 zau.kr 은 `zau` 였다. 블로그 이름과 다를 수 있다.)
+	 */
+	public function site_name() {
+		$name = trim( (string) $this->settings()['site_name'] );
+		return ( '' !== $name ) ? $name : (string) get_bloginfo( 'name', 'display' );
+	}
+
+	/** 활성화 시 — Rank Math 설정을 이어받고, 사이트맵 주소 규칙을 심고 다시 깐다. */
 	public function on_activate() {
+		// 이어받기는 Rank Math 가 켜져 있어도 한다 — 그 값을 읽어 오는 것이 목적이다.
+		$imported = $this->import_rank_math( $this->settings() );
+		WSP_Settings::set( $this->id(), $imported );
+
 		if ( $this->rank_math_active() ) {
 			return; // 쉬는 중이면 규칙을 심지 않는다(Rank Math 의 사이트맵과 부딪힌다).
 		}
@@ -228,9 +393,11 @@ class WSP_Mod_SEO extends WSP_Module {
 	/* ------------------------------ 설정 화면 ------------------------------ */
 
 	public function render_settings() {
-		$s    = $this->settings();
-		$rm   = $this->rank_math_active();
-		$icon = get_site_icon_url();
+		$s        = $this->settings();
+		$rm       = $this->rank_math_active();
+		$icon     = get_site_icon_url();
+		$migrated = get_option( self::MIGRATED_OPTION, array() );
+		$moved    = ( is_array( $migrated ) && ! empty( $migrated['moved'] ) && is_array( $migrated['moved'] ) ) ? $migrated['moved'] : array();
 		?>
 		<?php if ( $rm ) : ?>
 		<div class="notice notice-warning" style="margin:0 0 16px;padding:12px 14px">
@@ -241,6 +408,38 @@ class WSP_Mod_SEO extends WSP_Module {
 			</p>
 		</div>
 		<?php endif; ?>
+
+		<div class="wsp-row">
+			<div class="wsp-row-label"><strong>Rank Math 설정 가져오기</strong>
+				<span class="wsp-row-help">Rank Math 에 적어 두셨던 값을 이 화면으로 옮깁니다. <strong>아직 손대지 않은 칸에만</strong> 들어가므로 여기서 고쳐 둔 값은 그대로 남습니다.</span></div>
+			<div class="wsp-row-control">
+				<button type="submit" name="<?php echo esc_attr( self::IMPORT_FIELD ); ?>" value="1" class="button">Rank Math 설정 가져오기</button>
+				<?php if ( ! empty( $moved ) ) : ?>
+					<?php
+					$lines = array();
+					foreach ( $moved as $label => $value ) {
+						$lines[] = $label . ' → ' . $value;
+					}
+					?>
+					<p style="margin:8px 0 0;color:#1d2327;font-size:13px">
+						가져온 것<?php echo ! empty( $migrated['at'] ) ? ' (' . esc_html( (string) $migrated['at'] ) . ')' : ''; ?>:
+						<?php echo esc_html( implode( ' · ', $lines ) ); ?>
+					</p>
+				<?php elseif ( is_array( $migrated ) && ! empty( $migrated['at'] ) ) : ?>
+					<p style="margin:8px 0 0;color:#646970;font-size:13px">
+						가져올 것이 없었습니다 (<?php echo esc_html( (string) $migrated['at'] ); ?>) — Rank Math 설정이 없거나 이미 여기서 고쳐 두신 칸뿐입니다.
+					</p>
+				<?php endif; ?>
+			</div>
+		</div>
+
+		<div class="wsp-row">
+			<div class="wsp-row-label"><strong>사이트 이름</strong>
+				<span class="wsp-row-help">검색·SNS 에 나가는 사이트 이름(구조화 데이터·og:site_name). 비우면 블로그 이름을 씁니다.</span></div>
+			<div class="wsp-row-control">
+				<input type="text" name="site_name" value="<?php echo esc_attr( $s['site_name'] ); ?>" placeholder="<?php echo esc_attr( get_bloginfo( 'name' ) ); ?>">
+			</div>
+		</div>
 
 		<div class="wsp-row">
 			<div class="wsp-row-label"><strong>제목</strong>
@@ -276,9 +475,9 @@ class WSP_Mod_SEO extends WSP_Module {
 
 		<div class="wsp-row">
 			<div class="wsp-row-label"><strong>조직 이름</strong>
-				<span class="wsp-row-help">검색결과에 보이는 발행자 이름. 비우면 사이트명.</span></div>
+				<span class="wsp-row-help">검색결과에 보이는 발행자 이름. 비우면 위의 「사이트 이름」.</span></div>
 			<div class="wsp-row-control">
-				<input type="text" name="org_name" value="<?php echo esc_attr( $s['org_name'] ); ?>" placeholder="<?php echo esc_attr( get_bloginfo( 'name' ) ); ?>">
+				<input type="text" name="org_name" value="<?php echo esc_attr( $s['org_name'] ); ?>" placeholder="<?php echo esc_attr( $this->site_name() ); ?>">
 			</div>
 		</div>
 

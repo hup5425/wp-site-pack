@@ -132,7 +132,7 @@ class WSP_SEO_Metabox {
 				<label for="wsp_seo_description"><strong>설명문</strong>
 					<span class="wsp-seo-count"><span id="wsp-seo-desc-count">0</span> / 160자</span></label>
 				<textarea id="wsp_seo_description" name="wsp_seo_description" rows="3" class="widefat"><?php echo esc_textarea( $desc ); ?></textarea>
-				<span class="wsp-seo-help">비우면 본문 첫 문장부터 160자를 자동으로 씁니다.</span>
+				<span class="wsp-seo-help">비우면 본문 <strong>첫 문단</strong>을 자동으로 씁니다(160자가 넘으면 문장 끝에서 자릅니다).</span>
 			</p>
 
 			<p class="wsp-seo-field">

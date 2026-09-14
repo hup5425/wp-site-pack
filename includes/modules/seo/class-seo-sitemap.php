@@ -5,7 +5,11 @@
  *  주소를 **지금 그대로** 유지한다(검색콘솔·네이버·다음에 등록된 주소가 끊기면 안 된다):
  *    /sitemap_index.xml  → post-sitemap1.xml … N · page-sitemap.xml · category-sitemap.xml
  *  글은 **오래된 것부터** 차례로 담는다(Rank Math 와 같은 순서라 기존 파일 번호가 유지된다).
+ *  post-sitemap1.xml 맨 앞에는 **홈 주소**를 넣는다(Rank Math 와 같은 자리. 그래서 글 200편이면
+ *  파일 안의 주소가 201개다 — 홈은 글 수로 세지 않으므로 파일 개수는 그대로다).
  *  워드프레스 기본 사이트맵은 끄고, /wp-sitemap.xml · /sitemap.xml 은 /sitemap_index.xml 로 301.
+ *  robots.txt 에 `Sitemap:` 줄이 없으면 그 줄만 더한다(robots.txt 를 통째로 다루는 것은
+ *  Ads 매니저다 — 그쪽이 우선순위 99 로 덮어쓰면 그쪽이 이긴다).
  *
  *  ⚠ 규칙(rewrite)이 아직 안 깔린 사이트(퍼머링크를 한 번도 저장 안 한 경우)에서도 돌게
  *    request 필터에서 주소를 직접 보고 쿼리 변수를 넣어 준다.
@@ -42,6 +46,9 @@ class WSP_SEO_Sitemap {
 		// 워드프레스 기본 사이트맵(/wp-sitemap.xml)은 끈다 — 같은 일을 두 곳에 두지 않는다.
 		add_filter( 'wp_sitemaps_enabled', '__return_false' );
 
+		// robots.txt 의 `Sitemap:` 줄 — 워드프레스 기본 사이트맵을 끄면 그 줄도 같이 사라진다.
+		add_filter( 'robots_txt', array( $this, 'filter_robots_txt' ), 20, 2 );
+
 		add_action( 'init', array( $this, 'add_rules' ) );
 		add_filter( 'query_vars', array( $this, 'query_vars' ) );
 		add_filter( 'request', array( $this, 'catch_request' ) );
@@ -55,6 +62,40 @@ class WSP_SEO_Sitemap {
 		add_action( 'created_term', array( $this, 'purge' ) );
 		add_action( 'edited_term', array( $this, 'purge' ) );
 		add_action( 'delete_term', array( $this, 'purge' ) );
+	}
+
+	/* ============================ robots.txt ============================ */
+
+	/**
+	 * robots.txt 에 `Sitemap:` 줄 더하기.
+	 * 워드프레스 기본 사이트맵(`wp_sitemaps_enabled`)을 끄면 워드프레스가 넣던 이 줄도 사라진다
+	 * — zau.kr 실측에서 robots.txt 에서 통째로 없어졌다.
+	 *
+	 * @param string $output 지금까지 만들어진 robots.txt.
+	 * @param bool   $public 「검색엔진 노출」 설정.
+	 * @return string
+	 */
+	public function filter_robots_txt( $output, $public = true ) {
+		if ( ! $public ) {
+			return $output; // 검색에 안 보이게 해 둔 사이트에는 사이트맵 주소를 알리지 않는다.
+		}
+		return self::add_sitemap_line( $output, home_url( '/sitemap_index.xml' ) );
+	}
+
+	/**
+	 * `Sitemap:` 줄이 없으면 맨 끝에 더한다. 이미 있으면 그대로. (순수 함수)
+	 *
+	 * @param string $output robots.txt 내용.
+	 * @param string $url    사이트맵 주소.
+	 * @return string
+	 */
+	public static function add_sitemap_line( $output, $url ) {
+		$output = (string) $output;
+		$url    = trim( (string) $url );
+		if ( '' === $url || preg_match( '/^\s*Sitemap\s*:/mi', $output ) ) {
+			return $output;
+		}
+		return rtrim( $output, "\r\n" ) . "\n\nSitemap: " . $url . "\n";
 	}
 
 	/* ============================ 주소 잡기 ============================ */
@@ -316,7 +357,7 @@ class WSP_SEO_Sitemap {
 		$q = new WP_Query( $args );
 		$latest = '';
 		foreach ( $q->posts as $p ) {
-			$iso = WSP_SEO_Head::iso8601( $p->post_modified_gmt );
+			$iso = WSP_SEO_Head::modified_iso( $p ); // 사이트 시간대(+09:00) — 머리말·구조화 데이터와 같은 방식.
 			if ( '' !== $iso && $iso > $latest ) {
 				$latest = $iso;
 			}
@@ -336,7 +377,27 @@ class WSP_SEO_Sitemap {
 		$args['offset']         = ( $page - 1 ) * $per;
 		$args['no_found_rows']  = true;
 
-		return $this->build_urlset( ( new WP_Query( $args ) )->posts );
+		// 첫 파일 맨 앞에 홈 주소(Rank Math 와 같은 자리). 홈은 글 수로 세지 않는다.
+		$prepend = ( 1 === (int) $page )
+			? self::home_url_entry_xml( home_url( '/' ), $this->latest_modified( 'post', 1, 0 ) )
+			: '';
+
+		return $this->build_urlset( ( new WP_Query( $args ) )->posts, $prepend );
+	}
+
+	/**
+	 * 사이트맵의 홈 한 줄. lastmod 는 가장 최근에 수정된 글의 시각. (순수 함수)
+	 *
+	 * @param string $home    홈 주소.
+	 * @param string $lastmod ISO 8601(비면 안 넣는다).
+	 * @return string
+	 */
+	public static function home_url_entry_xml( $home, $lastmod ) {
+		$xml = "\t<url>\n\t\t<loc>" . esc_url( (string) $home ) . "</loc>\n";
+		if ( '' !== (string) $lastmod ) {
+			$xml .= "\t\t<lastmod>" . esc_html( (string) $lastmod ) . "</lastmod>\n";
+		}
+		return $xml . "\t</url>\n";
 	}
 
 	protected function build_pages() {
@@ -389,14 +450,15 @@ class WSP_SEO_Sitemap {
 	 * 글 목록 → urlset. 항목마다 loc · lastmod · image:image(대표사진).
 	 *
 	 * @param WP_Post[] $posts
+	 * @param string    $prepend 맨 앞에 먼저 넣을 <url> 덩어리(첫 파일의 홈 주소).
 	 * @return string
 	 */
-	protected function build_urlset( $posts ) {
-		$xml = $this->urlset_open();
+	protected function build_urlset( $posts, $prepend = '' ) {
+		$xml = $this->urlset_open() . (string) $prepend;
 		foreach ( (array) $posts as $p ) {
 			$xml .= "\t<url>\n";
 			$xml .= "\t\t<loc>" . esc_url( (string) get_permalink( $p ) ) . "</loc>\n";
-			$iso  = WSP_SEO_Head::iso8601( $p->post_modified_gmt );
+			$iso  = WSP_SEO_Head::modified_iso( $p );
 			if ( '' !== $iso ) {
 				$xml .= "\t\t<lastmod>" . esc_html( $iso ) . "</lastmod>\n";
 			}
