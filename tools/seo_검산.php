@@ -168,6 +168,7 @@ sort( $저장열쇠 );
 	$모듈->sanitize( array( 'same_as' => "https://blog.naver.com/a\n엉뚱한 글\n\nhttps://youtube.com/@b" ) )['same_as'],
 	"https://blog.naver.com/a\nhttps://youtube.com/@b"
 );
+확인( '빈 입력이면 홈 제목 태그라인은 꺼짐(체크박스 관례 — 기본값 1과는 별개)', $저장값['home_title_tagline'], 0 );
 
 /* ============================ 1. 설명문 자르기 ============================ */
 
@@ -465,6 +466,85 @@ $글수 = WSP_Mod_SEO::migrate_from_rank_math(
 확인( '이어받은 글 수도 2000 안으로', $글수['settings']['sitemap_per_page'], 2000 );
 
 확인( 'Rank Math 설정이 없으면 아무것도 안 옮긴다', WSP_Mod_SEO::migrate_from_rank_math( $기본설정, $기본설정, array() )['moved'], array() );
+
+/* ---- 구분 기호의 HTML 엔티티를 풀어서 이어받는다 (benefitf.com 실측 `&bull;`) ---- */
+
+$벤핏에프_구분기호 = WSP_Mod_SEO::migrate_from_rank_math(
+	$기본설정,
+	$기본설정,
+	array( 'titles' => array( 'title_separator' => '&bull;' ), 'general' => array(), 'sitemap' => array() )
+);
+확인( '엔티티로 저장된 구분 기호는 풀어서 이어받는다', $벤핏에프_구분기호['settings']['title_separator'], '•' );
+확인( '이어받은 구분 기호에 엔티티 글자(&·;)가 남지 않는다', strpbrk( $벤핏에프_구분기호['settings']['title_separator'], '&;' ), false );
+
+/* ---- 홈 제목에 태그라인을 붙일지는 Rank Math homepage_title 의 %sitedesc% 유무로 (2026-09-14 실측) ---- */
+
+$자우_홈제목 = WSP_Mod_SEO::migrate_from_rank_math(
+	$기본설정,
+	$기본설정,
+	array( 'titles' => array( 'homepage_title' => '%sitename% %page% %sep% %sitedesc%' ), 'general' => array(), 'sitemap' => array() )
+);
+확인( '%sitedesc% 가 있으면 태그라인 붙이기는 그대로 켬(기본값과 같아 옮긴 것으로 안 셈)', $자우_홈제목['settings']['home_title_tagline'], 1 );
+확인( '값이 기본값과 같으면 옮긴 목록에 안 남는다', isset( $자우_홈제목['moved']['홈 제목에 태그라인 붙이기'] ), false );
+
+$apt뷰_홈제목 = WSP_Mod_SEO::migrate_from_rank_math(
+	$기본설정,
+	$기본설정,
+	array( 'titles' => array( 'homepage_title' => '%sitename% %page%' ), 'general' => array(), 'sitemap' => array() )
+);
+확인( '%sitedesc% 가 없으면 태그라인 붙이기를 끈다(apt-view.com)', $apt뷰_홈제목['settings']['home_title_tagline'], 0 );
+확인( '끈 것이 옮긴 목록에 남는다', $apt뷰_홈제목['moved']['홈 제목에 태그라인 붙이기'], '끔' );
+
+$코어비즈_홈제목 = WSP_Mod_SEO::migrate_from_rank_math(
+	$기본설정,
+	$기본설정,
+	array( 'titles' => array( 'homepage_title' => '%sitename%' ), 'general' => array(), 'sitemap' => array() )
+);
+확인( '%sitedesc% 가 없으면 태그라인 붙이기를 끈다(coreabiz)', $코어비즈_홈제목['settings']['home_title_tagline'], 0 );
+
+// 이미 사장님이 꺼 둔 칸은 Rank Math 값이 %sitedesc% 를 갖고 있어도 건드리지 않는다.
+$내설정_홈제목 = $기본설정;
+$내설정_홈제목['home_title_tagline'] = 0;
+$지킴_홈제목 = WSP_Mod_SEO::migrate_from_rank_math(
+	$내설정_홈제목,
+	$기본설정,
+	array( 'titles' => array( 'homepage_title' => '%sitename% %sep% %sitedesc%' ), 'general' => array(), 'sitemap' => array() )
+);
+확인( '내가 꺼 둔 칸은 그대로', $지킴_홈제목['settings']['home_title_tagline'], 0 );
+
+/* ============================ 6. 제목 조각 잇기 · 엔티티 이스케이프 ============================ */
+
+확인( '빈 조각은 버리고 이어붙인다', WSP_SEO_Head::join_title( array( '글 제목', '', '사이트' ), '-' ), '글 제목 - 사이트' );
+확인( '조각이 하나뿐이면 구분 기호 없이', WSP_SEO_Head::join_title( array( '사이트', '' ), '-' ), '사이트' );
+확인( '조각이 모두 비면 빈 문자열', WSP_SEO_Head::join_title( array( '', '' ), '-' ), '' );
+
+확인( '조각의 태그를 걷는다', WSP_SEO_Head::part( '<b>굵게</b> 글자' ), '굵게 글자' );
+확인( '조각의 HTML 엔티티를 되살린다', WSP_SEO_Head::part( 'A &amp; B' ), 'A & B' );
+
+// 구분 기호에 엔티티가 그대로 남아 있으면(디코드를 안 했다면) 워드프레스가 <title> 을 낼 때
+// esc_html 로 한 번 더 이스케이프해 `&amp;bull;` 로 깨진다 — 대조군.
+확인(
+	'엔티티를 안 푼 구분 기호로 이으면 출력 때 두 번 이스케이프된다(대조군 — 우리는 이렇게 안 함)',
+	esc_html( WSP_SEO_Head::join_title( array( 'A', 'B' ), '&bull;' ) ),
+	'A &amp;bull; B'
+);
+// migrate_from_rank_math 가 미리 풀어 둔 구분 기호(•)로 이으면 한 번만 이스케이프되어 깨지지 않는다.
+확인(
+	'엔티티를 미리 푼 구분 기호로 이으면 출력 때 한 번만 이스케이프되어 그대로',
+	esc_html( WSP_SEO_Head::join_title( array( 'A', 'B' ), $벤핏에프_구분기호['settings']['title_separator'] ) ),
+	'A • B'
+);
+
+/* ============================ 7. 첨부파일 404 → 슬러그 판정 ============================ */
+
+확인( 'zau.kr 실측 `/3095/` 형태에서 슬러그를 뽑는다', WSP_Mod_SEO::attachment_slug_from_path( '/3095/' ), '3095' );
+확인( '깊은 경로면 마지막 조각만', WSP_Mod_SEO::attachment_slug_from_path( '/2026/09/사진-이름/' ), '사진-이름' );
+확인( '쿼리 문자열은 버린다', WSP_Mod_SEO::attachment_slug_from_path( '/사진/?utm=1&x=2' ), '사진' );
+확인( '앞뒤 빗금이 없어도 동일', WSP_Mod_SEO::attachment_slug_from_path( '사진' ), '사진' );
+확인( '도메인이 붙어 있어도 마지막 조각만', WSP_Mod_SEO::attachment_slug_from_path( 'https://zau.kr/2026/09/3095/' ), '3095' );
+확인( 'URL 인코딩된 한글도 원문으로 되돌린다', WSP_Mod_SEO::attachment_slug_from_path( '/%EC%82%AC%EC%A7%84/' ), '사진' );
+확인( '루트 주소는 빈 값(첨부파일이 아니다)', WSP_Mod_SEO::attachment_slug_from_path( '/' ), '' );
+확인( '빈 문자열은 빈 값', WSP_Mod_SEO::attachment_slug_from_path( '' ), '' );
 
 /* ------------------------------ 결과 ------------------------------ */
 

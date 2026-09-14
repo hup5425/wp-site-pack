@@ -53,7 +53,7 @@ class WSP_Mod_SEO extends WSP_Module {
 		array( 'titles',  'website_alternate_name',       'site_alternate_name', '사이트 다른 이름', 'text' ),
 		array( 'titles',  'knowledgegraph_name',          'org_name',            '조직 이름',       'text' ),
 		array( 'titles',  'knowledgegraph_logo',          'org_logo',            '로고',           'url' ),
-		array( 'titles',  'title_separator',              'title_separator',     '구분 기호',       'text' ),
+		array( 'titles',  'title_separator',              'title_separator',     '구분 기호',       'sep' ),
 		array( 'titles',  'pt_post_default_article_type', 'article_type',        '글 종류',         'article_type' ),
 		array( 'titles',  'homepage_description',         'site_description',    '사이트 설명문',    'text' ),
 		array( 'titles',  'open_graph_image',             'default_share_image', '기본 공유 사진',   'url' ),
@@ -82,6 +82,7 @@ class WSP_Mod_SEO extends WSP_Module {
 		return array(
 			'title_append_sitename' => 0,            // 「글 제목 뒤에 사이트명 붙이기」
 			'title_separator'       => '-',          // 「구분 기호」
+			'home_title_tagline'    => 1,            // 「홈 제목에 태그라인 붙이기」(태그라인이 비면 어차피 안 붙음)
 			'site_name'             => '',           // 「사이트 이름」(비면 블로그 이름)
 			'site_description'      => '',           // 「사이트 설명문」(홈 설명문)
 			'default_share_image'   => '',           // 「기본 공유 사진」
@@ -126,6 +127,7 @@ class WSP_Mod_SEO extends WSP_Module {
 		$out = array(
 			'title_append_sitename' => empty( $input['title_append_sitename'] ) ? 0 : 1,
 			'title_separator'       => $sep,
+			'home_title_tagline'    => empty( $input['home_title_tagline'] ) ? 0 : 1,
 			'site_name'             => isset( $input['site_name'] ) ? sanitize_text_field( (string) $input['site_name'] ) : '',
 			'site_description'      => isset( $input['site_description'] ) ? sanitize_text_field( (string) $input['site_description'] ) : '',
 			'default_share_image'   => isset( $input['default_share_image'] ) ? esc_url_raw( (string) $input['default_share_image'] ) : '',
@@ -236,6 +238,13 @@ class WSP_Mod_SEO extends WSP_Module {
 				case 'article_type':
 					$value = in_array( $raw, self::ARTICLE_TYPES, true ) ? $raw : null;
 					break;
+				case 'sep':
+					// 구분 기호는 Rank Math 가 HTML 엔티티로 저장해 둔 경우가 있다(benefitf.com
+					// `&bull;`). 그대로 옮기면 제목을 낼 때(이미 텍스트로 이어붙인 뒤 워드프레스가
+					// esc_html 하는 자리) `&amp;bull;` 로 두 번 이스케이프된다 — 미리 풀어 둔다.
+					$decoded = trim( html_entity_decode( $raw, ENT_QUOTES, 'UTF-8' ) );
+					$value   = ( '' !== $decoded ) ? $decoded : null;
+					break;
 				default:
 					$value = $raw;
 			}
@@ -253,6 +262,20 @@ class WSP_Mod_SEO extends WSP_Module {
 			&& 'to_post' !== $out['attachment_page'] ) {
 			$out['attachment_page']       = 'to_post';
 			$moved['첨부파일 페이지'] = '글로 보내기';
+		}
+
+		// 홈 제목에 태그라인을 붙일지 — Rank Math 의 homepage_title 에 %sitedesc% 가 있었을 때만 켠다.
+		// (apt-view.com 은 `%sitename% %page%` 라 태그라인이 없다 — 그대로 두면 태그라인이 블로그
+		//  주소("https://apt-view.com")라 홈 제목이 "아파트VIEW - https://apt-view.com" 이 된다.
+		//  zau.kr `%sitename% %page% %sep% %sitedesc%` · coreabiz `%sitename%` · benefitf `%sitename% %page%`.)
+		if ( isset( $titles['homepage_title'] ) && is_string( $titles['homepage_title'] ) && '' !== trim( $titles['homepage_title'] )
+			&& isset( $out['home_title_tagline'], $defaults['home_title_tagline'] )
+			&& (int) $out['home_title_tagline'] === (int) $defaults['home_title_tagline'] ) {
+			$want = ( false !== strpos( $titles['homepage_title'], '%sitedesc%' ) ) ? 1 : 0;
+			if ( $want !== (int) $out['home_title_tagline'] ) {
+				$out['home_title_tagline']            = $want;
+				$moved['홈 제목에 태그라인 붙이기'] = $want ? '켬' : '끔';
+			}
 		}
 
 		// 작성자 페이지 — Rank Math 가 noindex 였으면 「검색 노출」을 끈다.
@@ -325,7 +348,7 @@ class WSP_Mod_SEO extends WSP_Module {
 
 		// 첨부파일 페이지 — 「글로 보내기」일 때만 걸린다.
 		if ( 'to_post' === $this->settings()['attachment_page'] ) {
-			add_action( 'template_redirect', array( $this, 'maybe_redirect_attachment' ), 0 );
+			add_action( 'template_redirect', array( $this, 'maybe_redirect_attachment' ), 1 );
 		}
 
 		// 옛 Rank Math FAQ 블록이 Rank Math CSS 없이도 안 깨지게 하는 최소 CSS.
@@ -361,21 +384,79 @@ class WSP_Mod_SEO extends WSP_Module {
 	}
 
 	/**
-	 * 첨부파일 페이지 → 부모 글로 301(부모가 없으면 홈).
+	 * 첨부파일 페이지 → 부모 글로 301(부모가 없거나 비공개면 홈).
 	 * 지금 benefitf·zau 는 홈 301, coreabiz·apt-view 는 404 라 사이트마다 달랐다 — 통일한다.
+	 *
+	 * `wp_attachment_pages_enabled=0`(워드프레스 6.4+ 기본) 인 사이트(zau.kr 실측)는 첨부파일
+	 * 주소를 워드프레스가 **404 로** 낸다 — `is_attachment()` 가 아니라 `is_404()` 로 걸린다.
+	 * 그때는 요청 주소의 슬러그로 첨부파일 글을 직접 찾는다.
 	 */
 	public function maybe_redirect_attachment() {
-		if ( ! is_attachment() ) {
+		if ( is_attachment() ) {
+			$this->redirect_to_attachment_parent( (int) get_queried_object_id() );
 			return;
 		}
-		$id     = get_queried_object_id();
-		$parent = $id ? wp_get_post_parent_id( $id ) : 0;
-		$url    = $parent ? get_permalink( $parent ) : home_url( '/' );
-		if ( ! $url ) {
+
+		if ( is_404() ) {
+			$id = $this->find_404_attachment_id();
+			if ( $id ) {
+				$this->redirect_to_attachment_parent( $id );
+			}
+		}
+	}
+
+	/**
+	 * 404 화면인데 사실 첨부파일 주소인가 — 있으면 그 첨부파일 글 번호(못 찾으면 0).
+	 * `attachment_id`·`attachment` 쿼리 변수가 남아 있으면 그것부터 보고, 없으면 요청 주소의
+	 * 마지막 조각을 슬러그로 본다(첨부파일은 부모 글 산하라 경로 전체가 일치할 필요는 없다 —
+	 * `get_page_by_path()` 도 첨부파일일 때는 계층을 보지 않는다).
+	 */
+	protected function find_404_attachment_id() {
+		$by_id = (int) get_query_var( 'attachment_id' );
+		if ( $by_id ) {
+			return $by_id;
+		}
+
+		$slug = trim( (string) get_query_var( 'attachment' ) );
+		if ( '' === $slug ) {
+			$slug = self::attachment_slug_from_path( isset( $_SERVER['REQUEST_URI'] ) ? wp_unslash( (string) $_SERVER['REQUEST_URI'] ) : '' ); // phpcs:ignore WordPress.Security.ValidatedSanitizedInput -- 슬러그 조회에만 쓴다.
+		}
+		if ( '' === $slug ) {
+			return 0;
+		}
+
+		$post = get_page_by_path( $slug, OBJECT, 'attachment' );
+		return ( $post && isset( $post->ID ) ) ? (int) $post->ID : 0;
+	}
+
+	/** 첨부파일 번호 → 부모 글(공개일 때)로 301, 부모가 없거나 비공개면 홈으로. */
+	protected function redirect_to_attachment_parent( $attachment_id ) {
+		$parent_id = $attachment_id ? wp_get_post_parent_id( $attachment_id ) : 0;
+		$url       = '';
+		if ( $parent_id && 'publish' === get_post_status( $parent_id ) ) {
+			$url = (string) get_permalink( $parent_id );
+		}
+		if ( '' === $url ) {
 			$url = home_url( '/' );
 		}
 		wp_redirect( $url, 301 ); // phpcs:ignore WordPress.Security.SafeRedirect -- 같은 사이트 주소.
 		exit;
+	}
+
+	/**
+	 * 요청 경로에서 첨부파일 슬러그로 볼 마지막 조각. (순수 함수 — tools/seo_검산.php 가 검산한다.)
+	 * 쿼리 문자열은 버리고, 앞뒤 빗금을 없앤 뒤 남는 마지막 조각을 돌려준다.
+	 *
+	 * @param string $path REQUEST_URI 같은 요청 경로(쿼리·도메인 있어도 된다).
+	 * @return string 못 찾으면 빈 문자열.
+	 */
+	public static function attachment_slug_from_path( $path ) {
+		$path = trim( (string) strtok( (string) $path, '?' ), '/' );
+		if ( '' === $path ) {
+			return '';
+		}
+		$segments = explode( '/', $path );
+		return trim( rawurldecode( (string) end( $segments ) ) );
 	}
 
 	/** 옛 FAQ 블록 최소 CSS — 그 블록이 실제로 들어 있는 글에서만 싣는다. */
@@ -449,6 +530,10 @@ class WSP_Mod_SEO extends WSP_Module {
 				<div style="margin-top:8px">
 					구분 기호: <input type="text" name="title_separator" value="<?php echo esc_attr( $s['title_separator'] ); ?>" style="width:80px;min-width:0">
 					<span class="wsp-row-help" style="display:inline">홈은 태그라인이 있을 때만 이 기호를 씁니다(태그라인이 비면 안 붙습니다).</span>
+				</div>
+				<div style="margin-top:8px">
+					<label><input type="checkbox" name="home_title_tagline" value="1" <?php checked( $s['home_title_tagline'], 1 ); ?>> 홈 제목에 태그라인 붙이기</label>
+					<span class="wsp-row-help" style="display:inline">태그라인이 비어 있으면 켜져 있어도 붙지 않습니다.</span>
 				</div>
 			</div>
 		</div>

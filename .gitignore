@@ -2,3 +2,4 @@
 *.zip
 .claude/
 tools/대조기록/
+tools/__pycache__/

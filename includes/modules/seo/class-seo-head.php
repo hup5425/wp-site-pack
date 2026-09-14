@@ -34,11 +34,14 @@ class WSP_SEO_Head {
 	}
 
 	public function register() {
-		// 우선순위 99 — 테마가 같은 필터를 우리보다 늦게(after_setup_theme 등) 걸면 기본값 10 끼리는
-		// 나중에 등록한 테마가 이긴다. zau.kr 실측에서 카테고리 제목이 「방송 맛집 – 다시쓰기」로
-		// 워드프레스 기본 en dash 가 나간 자리가 여기다.
+		// 워드프레스 기본 조립(document_title_parts → implode → wptexturize)은 완성된 문자열을
+		// `-` 로 이어 붙인 뒤 wptexturize 를 태워 ` - ` 를 ` – `(en dash)로 바꿔 버린다 — zau.kr
+		// 실측에서 카테고리 제목이 「방송 맛집 – 다시쓰기」로 나간 자리가 여기다. Rank Math 처럼
+		// pre_get_document_title 로 완성 문자열을 직접 돌려준다(그 필터는 wptexturize 를 안 탄다).
+		add_filter( 'pre_get_document_title', array( $this, 'filter_pre_document_title' ) );
+		// document_title_separator 는 우리가 다루지 않는 화면(위 필터가 빈 값을 돌려줄 때)에
+		// 워드프레스 기본 조립이 쓸 구분 기호를 맞춰 주는 안전망으로 남겨 둔다.
 		add_filter( 'document_title_separator', array( $this, 'filter_separator' ), 99 );
-		add_filter( 'document_title_parts', array( $this, 'filter_title_parts' ), 99 );
 		add_filter( 'wp_robots', array( $this, 'filter_robots' ) );
 		// 우선순위 2 — canonical(rel_canonical, 10)보다 앞.
 		// 글·페이지의 canonical 은 워드프레스 기본을 그대로 두고, 워드프레스가 내주지 않는
@@ -54,34 +57,125 @@ class WSP_SEO_Head {
 	}
 
 	/**
-	 * 홈: 사이트명 (태그라인이 있으면 `사이트명 구분기호 태그라인`, 비면 구분 기호를 안 붙인다).
-	 * 글·페이지: 「검색 제목」이 있으면 그것, 사이트명은 설정이 켜졌을 때만.
+	 * 완성된 제목 문자열을 직접 돌려준다(Rank Math 와 같은 방식). 워드프레스는 이 필터가 빈
+	 * 문자열이 아닌 값을 돌려주면 **그 값을 그대로** 쓴다 — wptexturize 를 안 태운다.
+	 *
+	 * 조각을 잇는 규칙은 예전 document_title_parts 필터와 같다:
+	 *  · 홈: 사이트명(+ 「홈 제목에 태그라인 붙이기」가 켜져 있고 태그라인이 있으면 태그라인)
+	 *  · 글·페이지: 「검색 제목」→글 제목 (+ 「글 제목 뒤에 사이트명 붙이기」가 켜졌을 때만 사이트명)
+	 *  · 보관함(카테고리·태그·글분류·작성자·날짜·글종류): 보관함 이름 + 사이트명
+	 *  · 검색: 검색어 + 사이트명
+	 *  · 404: 「페이지를 찾을 수 없음」 + 사이트명
+	 *  · 그 밖(다루지 않는 화면)은 빈 문자열 — 워드프레스 기본 조립으로 넘긴다.
+	 *
+	 * 여기서 「사이트명」은 이 모듈의 「사이트 이름」 설정이 아니라 **블로그 이름**
+	 * (`get_bloginfo('name')`)이다 — Rank Math 도 그랬다(zau.kr 실측 `방송 맛집 - 다시쓰기`).
+	 * 쪽 번호(2쪽 등)는 붙이지 않는다 — Rank Math 도 안 붙였다.
+	 *
+	 * @param string $title 다른 곳(예: 다른 플러그인)이 이미 채웠으면 그대로 존중한다.
+	 * @return string
 	 */
-	public function filter_title_parts( $parts ) {
-		$s = $this->mod->settings();
+	public function filter_pre_document_title( $title ) {
+		if ( '' !== (string) $title ) {
+			return $title;
+		}
+
+		$sep  = $this->filter_separator( '-' );
+		$site = self::part( get_bloginfo( 'name', 'display' ) );
 
 		if ( is_front_page() ) {
-			$parts['title'] = get_bloginfo( 'name', 'display' );
-			unset( $parts['site'] );
-			$tagline = trim( (string) get_bloginfo( 'description', 'display' ) );
-			if ( '' !== $tagline ) {
-				$parts['tagline'] = $tagline;
-			} else {
-				unset( $parts['tagline'] );
-			}
-			return $parts;
+			$s       = $this->mod->settings();
+			$tagline = ! empty( $s['home_title_tagline'] ) ? self::part( get_bloginfo( 'description', 'display' ) ) : '';
+			return self::join_title( array( $site, $tagline ), $sep );
 		}
 
 		if ( is_singular( array( 'post', 'page' ) ) ) {
-			$custom = $this->custom_title( get_queried_object_id() );
-			if ( '' !== $custom ) {
-				$parts['title'] = $custom;
+			$s      = $this->mod->settings();
+			$id     = get_queried_object_id();
+			$custom = $this->custom_title( $id );
+			$parts  = array( self::part( ( '' !== $custom ) ? $custom : get_the_title( $id ) ) );
+			if ( ! empty( $s['title_append_sitename'] ) ) {
+				$parts[] = $site;
 			}
-			if ( empty( $s['title_append_sitename'] ) ) {
-				unset( $parts['site'] );
-			}
+			return self::join_title( $parts, $sep );
 		}
-		return $parts;
+
+		if ( is_404() ) {
+			return self::join_title( array( '페이지를 찾을 수 없음', $site ), $sep );
+		}
+
+		if ( is_search() ) {
+			return self::join_title( array( self::part( get_search_query( false ) ), $site ), $sep );
+		}
+
+		$archive = $this->archive_title();
+		if ( '' !== $archive ) {
+			return self::join_title( array( $archive, $site ), $sep );
+		}
+
+		return ''; // 다루지 않는 화면 — 워드프레스 기본 조립에 맡긴다.
+	}
+
+	/** 지금 화면이 보관함이면 그 이름(카테고리·태그·글분류·작성자·날짜·글종류 보관함). 아니면 빈 값. */
+	protected function archive_title() {
+		if ( is_category() || is_tag() || is_tax() ) {
+			$term = get_queried_object();
+			return ( $term && isset( $term->name ) ) ? self::part( $term->name ) : '';
+		}
+		if ( is_author() ) {
+			$author = get_queried_object();
+			return ( $author && isset( $author->display_name ) ) ? self::part( $author->display_name ) : '';
+		}
+		if ( is_year() ) {
+			return self::part( get_the_date( _x( 'Y', 'yearly archives date format' ) ) );
+		}
+		if ( is_month() ) {
+			return self::part( get_the_date( _x( 'F Y', 'monthly archives date format' ) ) );
+		}
+		if ( is_day() ) {
+			return self::part( get_the_date( _x( 'F j, Y', 'daily archives date format' ) ) );
+		}
+		if ( is_post_type_archive() ) {
+			return self::part( post_type_archive_title( '', false ) );
+		}
+		return '';
+	}
+
+	/**
+	 * 제목 한 조각 다듬기 — 태그를 걷고 HTML 엔티티를 되살린다. (순수 함수)
+	 * 여기서 엔티티를 풀어 두는 까닭: 최종 출력(워드프레스의 `<title>` 은 esc_html 로,
+	 * 우리 공유 태그는 esc_attr 로) 이 한 번 더 이스케이프하므로, 조각에 `&amp;` 같은 엔티티가
+	 * 남아 있으면 `&amp;amp;` 로 두 번 이스케이프된다.
+	 *
+	 * @param string $text
+	 * @return string
+	 */
+	public static function part( $text ) {
+		$text = wp_strip_all_tags( (string) $text );
+		$text = html_entity_decode( $text, ENT_QUOTES, 'UTF-8' );
+		return trim( $text );
+	}
+
+	/**
+	 * 제목 조각을 구분 기호로 잇는다 — 빈 조각은 버린다. (순수 함수)
+	 *
+	 * @param string[] $parts
+	 * @param string   $sep
+	 * @return string
+	 */
+	public static function join_title( array $parts, $sep ) {
+		$parts = array_values(
+			array_filter(
+				array_map( 'trim', $parts ),
+				function ( $p ) {
+					return '' !== $p;
+				}
+			)
+		);
+		if ( empty( $parts ) ) {
+			return '';
+		}
+		return implode( ' ' . $sep . ' ', $parts );
 	}
 
 	/**
