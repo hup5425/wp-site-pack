@@ -46,6 +46,18 @@ $active = WSP_Settings::is_active( $slug );
 	<input type="hidden" name="wsp_action" value="save_module">
 	<input type="hidden" name="module" value="<?php echo esc_attr( $slug ); ?>">
 
+	<?php
+	/*
+	 * 입력칸에서 엔터를 쳤을 때 쓰이는 기본 단추(워드프레스·HTML 관례).
+	 * 브라우저는 엔터를 폼 안의 "첫 submit 단추"로 처리하는데, 그 자리에 모듈의
+	 * [삭제] 단추가 있으면 엔터 한 번에 인증 파일이 지워진다. 눈에 안 보이는 저장 단추를
+	 * 맨 앞에 두어 엔터 = 저장하기가 되게 한다. (display:none 대신 화면에서만 감춰
+	 * 브라우저가 기본 단추로 인정하게 한다.)
+	 */
+	?>
+	<button type="submit" class="wsp-default-submit" tabindex="-1" aria-hidden="true"
+		style="position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);border:0">저장하기</button>
+
 	<div class="wsp-settings-body">
 		<?php $mod->render_settings(); ?>
 	</div>

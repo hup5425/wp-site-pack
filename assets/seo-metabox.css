@@ -1,0 +1,30 @@
+/* 글 편집 화면의 「검색 미리보기」 메타박스. (기획서 4.8 사) */
+
+.wsp-seo-box { font-size: 14px; }
+
+.wsp-seo-preview {
+	border: 1px solid #dcdcde;
+	border-radius: 8px;
+	padding: 14px 16px;
+	margin: 4px 0 18px;
+	background: #fff;
+}
+.wsp-seo-preview-label { color: #646970; font-size: 13px; margin-bottom: 8px; }
+.wsp-seo-preview-url { color: #202124; font-size: 13px; word-break: break-all; }
+.wsp-seo-preview-title {
+	color: #1a0dab;
+	font-size: 20px;
+	line-height: 1.4;
+	margin: 2px 0 4px;
+}
+.wsp-seo-preview-desc { color: #4d5156; font-size: 14px; line-height: 1.6; }
+.wsp-seo-preview-desc.wsp-seo-pv-auto { color: #8c8f94; }
+
+.wsp-seo-field { margin: 0 0 16px; }
+.wsp-seo-field label { display: block; margin-bottom: 4px; font-size: 14px; }
+.wsp-seo-help { display: block; color: #646970; font-size: 13px; margin-top: 4px; }
+.wsp-seo-count { float: right; color: #646970; font-size: 13px; font-weight: normal; }
+.wsp-seo-count.wsp-seo-over { color: #d63638; font-weight: 600; }
+
+.wsp-seo-count-table { margin-top: 8px; }
+.wsp-seo-count-table th, .wsp-seo-count-table td { font-size: 14px; }

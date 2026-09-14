@@ -65,6 +65,28 @@ abstract class WSP_Module {
 		return WSP_Settings::get( $this->id(), $this->default_settings() );
 	}
 
+	/**
+	 * 가상 파일(ads.txt·robots·인증파일·IndexNow 키)을 내보내기 직전 응답 헤더 준비.
+	 *
+	 * 공통에 둔 이유: template_redirect 시점에는 워드프레스가 이미 "찾는 글이 없다(404)"로
+	 * 결론을 낸 뒤다. 그대로 본문만 출력하면 내용은 보이지만 응답 코드가 404 라서
+	 * 검색엔진·애드센스 크롤러가 파일이 없는 것으로 본다. 이 처리를 모듈마다 따로 쓰면
+	 * 한 곳만 고치는 실수가 생기므로 계약(WSP_Module)에 한 번만 둔다.
+	 *
+	 * @param string $content_type 예: 'text/plain; charset=utf-8'.
+	 * @return void
+	 */
+	protected function send_virtual_headers( $content_type ) {
+		global $wp_query;
+		if ( $wp_query instanceof WP_Query ) {
+			$wp_query->is_404 = false;
+		}
+		status_header( 200 );
+		// 404 로 나갔던 응답이 브라우저·CDN 에 남아 있으면 고쳐도 계속 404 로 보인다.
+		nocache_headers();
+		header( 'Content-Type: ' . $content_type );
+	}
+
 	/** 이 모듈이 활성인지. */
 	public function is_active() {
 		return WSP_Settings::is_active( $this->id() );

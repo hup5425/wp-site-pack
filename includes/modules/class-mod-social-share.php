@@ -76,7 +76,27 @@ class WSP_Mod_Social_Share extends WSP_Module {
 		}
 		WSP_Assets::front_style( 'social-share' );
 		$s = $this->settings();
-		WSP_Assets::front_script( 'social-share', array( 'kakaoKey' => (string) $s['kakao_key'] ), 'WSP_SOCIAL' );
+		WSP_Assets::front_script( 'social-share', array(
+			'kakaoKey' => (string) $s['kakao_key'],
+			'imageUrl' => $this->share_image_url(),
+		), 'WSP_SOCIAL' );
+	}
+
+	/**
+	 * 카카오톡 공유용 대표 사진 주소. 글 대표이미지(원본 크기) → 없으면 사이트 아이콘 → 없으면 빈 값.
+	 * 빈 값이면 JS 가 사진이 필수가 아닌 공유 방식(텍스트 템플릿)으로 바꿔 보낸다(카카오가 imageUrl
+	 * 빈 feed 공유를 거부할 수 있어서).
+	 */
+	protected function share_image_url() {
+		if ( is_singular() ) {
+			$id  = get_queried_object_id();
+			$url = $id ? get_the_post_thumbnail_url( $id, 'full' ) : '';
+			if ( $url ) {
+				return $url;
+			}
+		}
+		$icon = get_site_icon_url();
+		return $icon ? $icon : '';
 	}
 
 	public function insert_content( $content ) {

@@ -30,6 +30,7 @@ class WSP_Core {
 			'class-mod-related-posts.php'      => 'WSP_Mod_Related_Posts',
 			'class-mod-scroll-popup.php'       => 'WSP_Mod_Scroll_Popup',
 			'class-mod-ad-protector.php'       => 'WSP_Mod_Ad_Protector',
+			'class-mod-seo.php'                => 'WSP_Mod_SEO',
 		);
 	}
 

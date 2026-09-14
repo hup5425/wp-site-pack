@@ -53,14 +53,27 @@
 		e.preventDefault();
 		initKakao( function () {
 			if ( ! window.Kakao || ! window.Kakao.Share ) { return; }
+			var url   = btn.getAttribute( 'data-url' );
+			var title = btn.getAttribute( 'data-title' ) || document.title;
+			var img   = ( window.WSP_SOCIAL && window.WSP_SOCIAL.imageUrl ) || '';
+			if ( img ) {
+				window.Kakao.Share.sendDefault( {
+					objectType: 'feed',
+					content: {
+						title: title,
+						description: '',
+						imageUrl: img,
+						link: { mobileWebUrl: url, webUrl: url }
+					}
+				} );
+				return;
+			}
+			// 대표 사진이 없으면 카카오가 imageUrl 빈 feed 공유를 거부할 수 있어,
+			// 사진이 필수가 아닌 텍스트 템플릿으로 보낸다(카카오 JS SDK 문서: objectType 'text').
 			window.Kakao.Share.sendDefault( {
-				objectType: 'feed',
-				content: {
-					title: btn.getAttribute( 'data-title' ) || document.title,
-					description: '',
-					imageUrl: '',
-					link: { mobileWebUrl: btn.getAttribute( 'data-url' ), webUrl: btn.getAttribute( 'data-url' ) }
-				}
+				objectType: 'text',
+				text: title,
+				link: { mobileWebUrl: url, webUrl: url }
 			} );
 		} );
 	} );

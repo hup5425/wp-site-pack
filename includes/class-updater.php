@@ -96,21 +96,12 @@ class WSP_Updater {
 		return ltrim( (string) $tag, 'vV' );
 	}
 
-	/**
-	 * 캐시된 최신 릴리스 버전(추가 네트워크 호출 없음). 모르면 ''.
-	 *
-	 * @return string
-	 */
-	public static function cached_latest_version() {
-		if ( '' === self::$repo ) {
-			return '';
-		}
-		$cached = get_transient( 'wsp_upd_' . md5( self::$repo ) );
-		if ( is_object( $cached ) && ! empty( $cached->tag_name ) ) {
-			return self::tag_to_version( $cached->tag_name );
-		}
-		return '';
-	}
+	// cached_latest_version() 은 여기 있었다 — "대시보드가 새로고침만으로(누르지 않아도)
+	// 새 버전 있음을 캐시로 보여줄 때" 쓰라고 만든 것으로 보이지만, 실제 대시보드
+	// (admin/dashboard.php)는 그 표시 없이 [업데이트 확인] 버튼을 눌렀을 때만
+	// ajax_check_update() 가 매번 새로 GitHub 를 확인한다(class-admin.php). 아무도 안 불러
+	// 죽은 코드였고, 연결하려면 이 파일 담당이 아닌 admin/dashboard.php 를 고쳐야 해서
+	// 이번 손질 범위 밖이다 — 그래서 지웠다.
 
 	protected static function package_url( $rel ) {
 		if ( ! empty( $rel->assets ) && is_array( $rel->assets ) ) {

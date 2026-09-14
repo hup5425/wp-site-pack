@@ -4,7 +4,13 @@
  *  - 광고(ins.adsbygoogle) 과다 클릭 IP 차단(시간창 기준).
  *  - 허용/차단 IP·차단 국가. 차단 시 광고 숨김/모달. CloudFlare 연동(옵션).
  *  - IP 해시·국가는 통계(class-geo)에서 읽어 재사용, 없으면 자체 폴백.
- *  - 차단 기록은 전용 테이블 {prefix}wsp_ad_blocks.
+ *  - 차단 기록은 전용 테이블 {prefix}wsp_ad_blocks (설정 옵션과 따로라 저장 충돌 없음).
+ *
+ * 🔴 페이지 캐시(Breeze)+CDN 전제 — HTML 에는 방문자마다 달라지는 값을 넣지 않는다.
+ *    HTML(캐시됨)   : ajax 주소 · 액션 이름 같은 **모든 방문자에게 같은 설정**만.
+ *    admin-ajax(캐시 안 됨): 차단 여부 · 안내 문구 · nonce 를 그때그때 판단해 돌려준다.
+ *    예전에는 차단 여부와 nonce 를 HTML 에 박아서, 한 사람이 차단되면 그 HTML 이 25분간
+ *    남들에게도 나가 안내창이 뜨고(①), 캐시된 낡은 nonce 로 보낸 클릭 집계는 조용히 버려졌다(②).
  *
  * @package wp-site-pack
  */
@@ -28,6 +34,7 @@ class WSP_Mod_Ad_Protector extends WSP_Module {
 			'use_cf'       => 0,
 			'cf_token'     => '',
 			'cf_zone'      => '',
+			'proxy_cdn'    => 0,
 			'allow_ips'    => array(),
 			'block_ips'    => array(),
 			'block_countries' => array(),
@@ -60,8 +67,11 @@ class WSP_Mod_Ad_Protector extends WSP_Module {
 	}
 
 	public function register() {
-		// 프런트: 광고 클릭 감지 스크립트 + 차단 상태 전달.
+		// 프런트: 광고 클릭 감지 스크립트(방문자와 무관한 설정만 실어 보낸다).
 		add_action( 'wp_enqueue_scripts', array( $this, 'assets' ) );
+		// AJAX: 지금 이 방문자가 차단 대상인지(캐시를 타지 않는 자리).
+		add_action( 'wp_ajax_wsp_ad_status', array( $this, 'ajax_status' ) );
+		add_action( 'wp_ajax_nopriv_wsp_ad_status', array( $this, 'ajax_status' ) );
 		// AJAX: 클릭 카운트.
 		add_action( 'wp_ajax_wsp_ad_click', array( $this, 'ajax_click' ) );
 		add_action( 'wp_ajax_nopriv_wsp_ad_click', array( $this, 'ajax_click' ) );
@@ -69,23 +79,61 @@ class WSP_Mod_Ad_Protector extends WSP_Module {
 		add_action( 'wp_loaded', array( $this, 'maybe_purge_expired' ) );
 	}
 
+	/**
+	 * 프런트 자원 등록.
+	 *
+	 * 🔴 여기서 내보내는 값은 **누가 보든 똑같아야 한다**(이 HTML 이 캐시되어 25분간 모두에게 나간다).
+	 *    그래서 차단 여부·안내 문구·nonce 는 넣지 않는다 — 페이지가 뜬 뒤 JS 가 admin-ajax 로 물어본다.
+	 *    "로그인 편집자면 스크립트를 아예 빼는" 분기도 없앴다. 그것도 사람마다 HTML 이 달라지는 자리라,
+	 *    편집자가 연 페이지가 캐시되면 남들에게도 감지가 빠진 HTML 이 나간다. 제외 판단 역시 admin-ajax 가 한다.
+	 */
 	public function assets() {
 		if ( is_admin() ) {
 			return;
 		}
-		// 로그인한 편집자(관리자·에디터 등)는 추적/차단 대상에서 완전 제외 — 본인이 차단되는 사고 방지.
-		if ( is_user_logged_in() && current_user_can( 'edit_posts' ) ) {
-			return;
-		}
 		WSP_Assets::front_style( 'ad-protector' );
-		$ip      = WSP_Stats_Bridge::client_ip();
-		$blocked = $this->is_blocked( $ip );
 		WSP_Assets::front_script( 'ad-protector', array(
-			'ajax'      => admin_url( 'admin-ajax.php' ),
-			'nonce'     => wp_create_nonce( 'wsp_ad' ),
-			'blocked'   => $blocked ? 1 : 0,
-			'modalText' => $blocked ? $this->settings()['modal_text'] : '',
+			'ajax'   => admin_url( 'admin-ajax.php' ),
+			'status' => 'wsp_ad_status',
+			'click'  => 'wsp_ad_click',
 		), 'WSP_ADP' );
+	}
+
+	/** 로그인한 편집자(관리자·에디터 등)는 추적/차단에서 제외 — 본인이 차단되는 사고 방지. */
+	protected function is_exempt_user() {
+		return is_user_logged_in() && current_user_can( 'edit_posts' );
+	}
+
+	/** 이 방문자의 IP. 전달 헤더는 '프록시/CDN 뒤에 있음' 을 켠 경우에만 읽는다. */
+	protected function client_ip() {
+		$s = $this->settings();
+		return WSP_Stats_Bridge::client_ip( ! empty( $s['proxy_cdn'] ) );
+	}
+
+	/**
+	 * 지금 이 방문자의 상태를 알려 준다(캐시 안 되는 자리).
+	 *
+	 * admin-ajax.php 는 워드프레스가 맨 앞에서 nocache_headers() 를 부르고 POST 로만 보내므로
+	 * Breeze 페이지 캐시도 CDN 도 저장하지 않는다 → 사람마다 다른 이 답은 여기서만 만든다.
+	 *
+	 *  state: off(추적 제외) · watch(감시만) · blocked(차단)
+	 *  nonce: 방금 만든 것이라 캐시 때문에 낡을 일이 없다. 클릭 보고에 그대로 쓴다.
+	 */
+	public function ajax_status() {
+		nocache_headers();
+		if ( $this->is_exempt_user() ) {
+			wp_send_json_success( array( 'state' => 'off' ) );
+		}
+		$s  = $this->settings();
+		$ip = $this->client_ip();
+		$blocked = ( '' !== $ip && $this->is_blocked( $ip ) );
+		wp_send_json_success( array(
+			'state' => $blocked ? 'blocked' : 'watch',
+			'text'  => $blocked ? $s['modal_text'] : '',
+			// 비로그인 방문자에게 워드프레스 nonce 는 뜻이 약하지만, 남의 사이트에서 쏘는
+			// 요청을 걸러 주기는 한다. 캐시된 HTML 이 아니라 이 답으로 주므로 늘 유효하다.
+			'nonce' => wp_create_nonce( 'wsp_ad' ),
+		) );
 	}
 
 	/**
@@ -129,21 +177,26 @@ class WSP_Mod_Ad_Protector extends WSP_Module {
 
 	/** 광고 클릭 AJAX — 시간창 카운트 → 초과 시 차단 기록. */
 	public function ajax_click() {
-		check_ajax_referer( 'wsp_ad', 'nonce' );
+		nocache_headers();
+		$s = $this->settings();
+		// nonce 는 상태 응답에서 갓 받은 것이라 정상이면 반드시 맞는다.
+		// 틀리면(페이지를 12시간 넘게 열어 둔 경우 등) 조용히 버리지 말고 다시 받아 오라고 알린다.
+		if ( ! check_ajax_referer( 'wsp_ad', 'nonce', false ) ) {
+			wp_send_json_error( array( 'renew' => 1 ) );
+		}
 		// 로그인 편집자는 집계·차단하지 않음.
-		if ( is_user_logged_in() && current_user_can( 'edit_posts' ) ) {
+		if ( $this->is_exempt_user() ) {
 			wp_send_json_success( array( 'blocked' => 0 ) );
 		}
-		$ip = WSP_Stats_Bridge::client_ip();
+		$ip = $this->client_ip();
 		if ( '' === $ip ) {
 			wp_send_json_success( array( 'blocked' => 0 ) );
 		}
-		$s = $this->settings();
 		if ( in_array( $ip, (array) $s['allow_ips'], true ) ) {
 			wp_send_json_success( array( 'blocked' => 0 ) );
 		}
 		if ( $this->is_blocked( $ip ) ) {
-			wp_send_json_success( array( 'blocked' => 1 ) );
+			wp_send_json_success( array( 'blocked' => 1, 'text' => $s['modal_text'] ) );
 		}
 
 		$hash   = WSP_Stats_Bridge::ip_hash( $ip );
@@ -155,7 +208,7 @@ class WSP_Mod_Ad_Protector extends WSP_Module {
 
 		if ( $count > max( 1, (int) $s['max_clicks'] ) ) {
 			$this->block_ip( $ip, $hash, $count );
-			wp_send_json_success( array( 'blocked' => 1 ) );
+			wp_send_json_success( array( 'blocked' => 1, 'text' => $s['modal_text'] ) );
 		}
 		wp_send_json_success( array( 'blocked' => 0 ) );
 	}
@@ -256,6 +309,7 @@ class WSP_Mod_Ad_Protector extends WSP_Module {
 			'use_cf'          => empty( $input['use_cf'] ) ? 0 : 1,
 			'cf_token'        => isset( $input['cf_token'] ) ? sanitize_text_field( (string) $input['cf_token'] ) : '',
 			'cf_zone'         => isset( $input['cf_zone'] ) ? sanitize_text_field( (string) $input['cf_zone'] ) : '',
+			'proxy_cdn'       => empty( $input['proxy_cdn'] ) ? 0 : 1,
 			'allow_ips'       => $parse_ips( $input['allow_ips'] ?? '' ),
 			'block_ips'       => $parse_ips( $input['block_ips'] ?? '' ),
 			'block_countries' => $parse_cc( $input['block_countries'] ?? '' ),
@@ -278,10 +332,25 @@ class WSP_Mod_Ad_Protector extends WSP_Module {
 	}
 
 	public function render_settings() {
-		$s      = $this->settings();
-		$bridge = WSP_Stats_Bridge::available() ? '연결됨(IP·국가 재사용)' : '미연결(자체 수집으로 동작)';
+		$s = $this->settings();
+		// '연결됨' 은 통계 플러그인의 그 함수를 **실제로 찾았을 때만** 뜬다(클래스만 있는지 보지 않는다).
+		$reuse = array();
+		if ( WSP_Stats_Bridge::has_client_ip() ) {
+			$reuse[] = 'IP 판정 재사용';
+		}
+		if ( WSP_Stats_Bridge::has_geo() ) {
+			$reuse[] = '국가 재사용';
+		}
+		$bridge = $reuse ? '연결됨(' . implode( ' · ', $reuse ) . ')' : '미연결(자체 수집으로 동작)';
+		$now_ip = $this->client_ip();
 		?>
-		<div class="wsp-note">통계 플러그인: <strong><?php echo esc_html( $bridge ); ?></strong></div>
+		<div class="wsp-note">통계 플러그인: <strong><?php echo esc_html( $bridge ); ?></strong>
+			<?php if ( WSP_Stats_Bridge::has_client_ip() && empty( $s['proxy_cdn'] ) ) : ?>
+				— IP 판정은 아래 <strong>프록시/CDN 뒤에 있음</strong>을 켰을 때만 씁니다.
+			<?php endif; ?>
+		</div>
+		<div class="wsp-note">지금 이 화면에서 보이는 내 IP: <strong><?php echo esc_html( $now_ip ? $now_ip : '알 수 없음' ); ?></strong>
+			(허용 IP 칸에 넣을 값입니다. 프록시/CDN 설정을 바꾸면 이 값도 바뀝니다.)</div>
 
 		<div class="wsp-row">
 			<div class="wsp-row-label"><strong>최대 허용 클릭 수 / 감지 시간</strong>
@@ -295,6 +364,16 @@ class WSP_Mod_Ad_Protector extends WSP_Module {
 			<div class="wsp-row-label"><strong>차단 자동 해제(일)</strong>
 				<span class="wsp-row-help">0 이면 영구 차단.</span></div>
 			<div class="wsp-row-control"><input type="number" name="unblock_days" min="0" max="3650" value="<?php echo esc_attr( $s['unblock_days'] ); ?>"> 일</div>
+		</div>
+		<div class="wsp-row">
+			<div class="wsp-row-label"><strong>프록시/CDN 뒤에 있음</strong>
+				<span class="wsp-row-help">Cloudflare 같은 CDN·프록시를 거쳐 들어오는 사이트면 켭니다.
+					켜야 방문자의 진짜 IP(CF-Connecting-IP 등)를 읽습니다.
+					끄면 서버가 직접 본 접속 주소만 씁니다 — 이 값은 아무나 지어낼 수 없어 더 안전합니다.
+					CDN 뒤인데 꺼 두면 방문자가 모두 같은 IP 로 보여 엉뚱한 차단이 납니다.</span></div>
+			<div class="wsp-row-control">
+				<label><input type="checkbox" name="proxy_cdn" value="1" <?php checked( $s['proxy_cdn'], 1 ); ?>> 프록시/CDN 뒤에 있음</label>
+			</div>
 		</div>
 		<div class="wsp-row">
 			<div class="wsp-row-label"><strong>CloudFlare 사용</strong>

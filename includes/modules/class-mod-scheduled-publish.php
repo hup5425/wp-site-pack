@@ -16,8 +16,9 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class WSP_Mod_Scheduled_Publish extends WSP_Module {
 
-	const CRON_HOOK = 'wsp_publish_due_cron';
-	const GATE_KEY  = 'wsp_sp_last_run'; // 요청 시 보정 과부하 방지 게이트.
+	const CRON_HOOK  = 'wsp_publish_due_cron';
+	const GATE_KEY   = 'wsp_sp_last_run'; // 요청 시 보정 과부하 방지 게이트.
+	const LOG_OPTION = 'wsp_log_scheduled_publish'; // 발행 로그 전용 옵션(모듈 설정과 분리, autoload no).
 
 	public function id()   { return 'scheduled_publish'; }
 	public function name() { return '예약글 발행 보장'; }
@@ -29,7 +30,6 @@ class WSP_Mod_Scheduled_Publish extends WSP_Module {
 			'mode'          => 'both',   // cron | ping | both
 			'interval_min'  => 10,       // 자체 크론 점검 주기(분)
 			'secret'        => '',       // 외부 트리거 키
-			'log'           => array(),  // 최근 발행 로그(옵션 캡)
 		);
 	}
 
@@ -144,17 +144,38 @@ class WSP_Mod_Scheduled_Publish extends WSP_Module {
 		return $count;
 	}
 
-	/** 최근 발행 로그(옵션 캡 30건). */
+	/**
+	 * 옛 옵션(wsp_mod_scheduled_publish 의 'log' 키)에 로그가 남아 있으면 전용 옵션으로 1회 옮긴다.
+	 * 로그는 글이 나갈 때마다 쓰기가 발생해 설정 옵션과 같이 두면 관리자 저장과 충돌하므로 분리했다.
+	 */
+	protected function maybe_migrate_log() {
+		$raw = get_option( WSP_Settings::MOD_PREFIX . $this->id(), array() );
+		if ( ! is_array( $raw ) || empty( $raw['log'] ) || ! is_array( $raw['log'] ) ) {
+			return;
+		}
+		if ( false === get_option( self::LOG_OPTION, false ) ) {
+			update_option( self::LOG_OPTION, array_slice( $raw['log'], 0, 30 ), false );
+		}
+		unset( $raw['log'] );
+		update_option( WSP_Settings::MOD_PREFIX . $this->id(), $raw );
+	}
+
+	/** 최근 발행 로그(전용 옵션, autoload no). */
+	protected function get_log() {
+		$this->maybe_migrate_log();
+		$log = get_option( self::LOG_OPTION, array() );
+		return is_array( $log ) ? $log : array();
+	}
+
+	/** 최근 발행 로그 기록(옵션 캡 30건). 전용 옵션이라 모듈 설정 저장과 서로 덮어쓰지 않는다. */
 	protected function log_publish( $id ) {
-		$s   = $this->settings();
-		$log = is_array( $s['log'] ) ? $s['log'] : array();
+		$log = $this->get_log();
 		array_unshift( $log, array(
 			'id'    => (int) $id,
 			'title' => get_the_title( $id ),
 			'time'  => current_time( 'mysql' ),
 		) );
-		$s['log'] = array_slice( $log, 0, 30 );
-		WSP_Settings::set( $this->id(), $s );
+		update_option( self::LOG_OPTION, array_slice( $log, 0, 30 ), false );
 	}
 
 	public function sanitize( $input ) {
@@ -167,11 +188,21 @@ class WSP_Mod_Scheduled_Publish extends WSP_Module {
 			'mode'         => $mode,
 			'interval_min' => max( 1, min( 120, (int) ( $input['interval_min'] ?? 10 ) ) ),
 			'secret'       => $s['secret'] ? $s['secret'] : wp_generate_password( 24, false ),
-			'log'          => is_array( $s['log'] ) ? $s['log'] : array(),
 		);
 		// 키 재발급 요청.
 		if ( ! empty( $input['regen_secret'] ) ) {
 			$out['secret'] = wp_generate_password( 24, false );
+		}
+
+		// 방식을 바꾸면 자체 크론 이벤트도 맞춘다(register() 의 등록 조건과 같은 기준: 'ping' 이면 자체 크론 불필요).
+		// 모듈이 꺼져 있으면 register() 가 애초에 안 걸려 크론 콜백도 없으므로 여기서 건드리지 않는다
+		// (켤 때 register() 가 필요하면 새로 건다).
+		if ( $this->is_active() ) {
+			if ( 'ping' === $mode ) {
+				wp_clear_scheduled_hook( self::CRON_HOOK );
+			} elseif ( ! wp_next_scheduled( self::CRON_HOOK ) ) {
+				wp_schedule_event( time() + 60, 'wsp_sp_interval', self::CRON_HOOK );
+			}
 		}
 		return $out;
 	}
@@ -210,12 +241,13 @@ class WSP_Mod_Scheduled_Publish extends WSP_Module {
 			</div>
 		</div>
 
-		<?php if ( ! empty( $s['log'] ) ) : ?>
+		<?php $log = $this->get_log(); ?>
+		<?php if ( ! empty( $log ) ) : ?>
 			<div class="wsp-row">
 				<div class="wsp-row-label"><strong>최근 발행 로그</strong></div>
 				<div class="wsp-row-control">
 					<table class="widefat striped"><thead><tr><th>글</th><th>발행 시각</th></tr></thead><tbody>
-					<?php foreach ( $s['log'] as $row ) : ?>
+					<?php foreach ( $log as $row ) : ?>
 						<tr><td><?php echo esc_html( $row['title'] ); ?></td><td><?php echo esc_html( $row['time'] ); ?></td></tr>
 					<?php endforeach; ?>
 					</tbody></table>
