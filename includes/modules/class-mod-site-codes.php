@@ -323,9 +323,17 @@ class WSP_Mod_Site_Codes extends WSP_Module {
 		if ( get_stylesheet_directory() !== get_template_directory() && is_readable( $fn ) ) {
 			$add( (string) @file_get_contents( $fn ), '자식 테마 functions.php' ); // phpcs:ignore
 		}
-		// ③ Insert Headers and Footers 플러그인.
-		foreach ( array( 'ihaf_insert_header', 'ihaf_insert_body', 'ihaf_insert_footer' ) as $opt ) {
-			$add( (string) get_option( $opt, '' ), 'Insert Headers and Footers 플러그인' );
+		// ③ Insert Headers and Footers 플러그인 — 켜져 있을 때만(꺼진 채 설정값만 남은 곳은 코드가 안 나간다. benefitf 실측).
+		$ihaf_on = false;
+		foreach ( (array) get_option( 'active_plugins', array() ) as $pl ) {
+			if ( false !== strpos( (string) $pl, 'insert-headers-and-footers' ) ) {
+				$ihaf_on = true;
+			}
+		}
+		if ( $ihaf_on ) {
+			foreach ( array( 'ihaf_insert_header', 'ihaf_insert_body', 'ihaf_insert_footer' ) as $opt ) {
+				$add( (string) get_option( $opt, '' ), 'Insert Headers and Footers 플러그인' );
+			}
 		}
 		// ④ 사이트팩 「헤더 & 푸터」 모듈.
 		$hf = get_option( 'wsp_mod_header_footer', array() );
