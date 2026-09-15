@@ -194,10 +194,29 @@
 				var frame = window.wp.media( { title: '이미지/동영상 선택', multiple: false } );
 				frame.on( 'select', function () {
 					var att = frame.state().get( 'selection' ).first().toJSON();
-					if ( target ) { target.value = att.url; }
+					if ( target ) {
+						target.value = att.url;
+						target.dispatchEvent( new Event( 'input', { bubbles: true } ) );
+					}
 				} );
 				frame.open();
 			} );
+		} );
+
+		// ── 사진 칸 미리보기: 주소를 고르거나 고쳐 쓰면 작은 그림을 바로 바꾼다 ──
+		document.querySelectorAll( '.wsp-img-preview' ).forEach( function ( box ) {
+			var input = document.getElementById( box.getAttribute( 'data-for' ) );
+			var img = box.querySelector( 'img' );
+			if ( ! input || ! img ) { return; }
+			var fallback = box.getAttribute( 'data-fallback' ) || '';
+			var sync = function () {
+				var url = input.value.trim() || fallback;
+				img.src = url;
+				box.hidden = '' === url;
+			};
+			input.addEventListener( 'input', sync );
+			input.addEventListener( 'change', sync );
+			img.addEventListener( 'error', function () { box.hidden = true; } );
 		} );
 
 		// ── 스크롤 팝업: 배너/HTML 모드 전환 ──

@@ -473,6 +473,24 @@ class WSP_Mod_SEO extends WSP_Module {
 
 	/* ------------------------------ 설정 화면 ------------------------------ */
 
+	/**
+	 * 사진 주소 칸 아래의 작은 미리보기. 주소가 비면 숨기고, 고르거나 고쳐 쓰면 admin.js 가 바로 바꾼다.
+	 *
+	 * @param string $input_id 대상 input 의 id.
+	 * @param string $url      지금 값(비면 $fallback).
+	 * @param string $fallback 값이 빌 때 보여 줄 그림(로고 칸의 사이트 아이콘 등).
+	 */
+	protected function image_preview( $input_id, $url, $fallback = '' ) {
+		$show = '' !== $url ? $url : $fallback;
+		printf(
+			'<div class="wsp-img-preview" data-for="%1$s" data-fallback="%2$s" style="margin-top:8px"%3$s><img src="%4$s" alt="" style="max-width:160px;max-height:90px;width:auto;height:auto;border:1px solid #dcdcde;border-radius:4px;background:#f6f7f7;padding:2px"></div>',
+			esc_attr( $input_id ),
+			esc_url( $fallback ),
+			'' === $show ? ' hidden' : '',
+			esc_url( $show )
+		);
+	}
+
 	public function render_settings() {
 		$s        = $this->settings();
 		$rm       = $this->rank_math_active();
@@ -552,9 +570,7 @@ class WSP_Mod_SEO extends WSP_Module {
 			<div class="wsp-row-control">
 				<input type="url" id="wsp_seo_share_image" name="default_share_image" value="<?php echo esc_attr( $s['default_share_image'] ); ?>" style="width:60%" placeholder="https://...">
 				<button type="button" class="button wsp-media-pick" data-target="#wsp_seo_share_image">미디어 선택</button>
-				<?php if ( $s['default_share_image'] ) : ?>
-					<div style="margin-top:8px"><img src="<?php echo esc_url( $s['default_share_image'] ); ?>" alt="" style="max-width:220px;height:auto;border:1px solid #dcdcde"></div>
-				<?php endif; ?>
+				<?php $this->image_preview( 'wsp_seo_share_image', $s['default_share_image'] ); ?>
 			</div>
 		</div>
 
@@ -572,6 +588,7 @@ class WSP_Mod_SEO extends WSP_Module {
 			<div class="wsp-row-control">
 				<input type="url" id="wsp_seo_org_logo" name="org_logo" value="<?php echo esc_attr( $s['org_logo'] ); ?>" style="width:60%" placeholder="<?php echo esc_attr( $icon ); ?>">
 				<button type="button" class="button wsp-media-pick" data-target="#wsp_seo_org_logo">미디어 선택</button>
+				<?php $this->image_preview( 'wsp_seo_org_logo', $s['org_logo'] ? $s['org_logo'] : $icon ); ?>
 			</div>
 		</div>
 
