@@ -113,22 +113,117 @@ class WSP_Mod_Ads_Manager extends WSP_Module {
 	}
 
 	/**
-	 * 지금 실제 서빙되는 robots.txt(보기 전용·기본값 만들 때 참고용).
-	 * 우리 필터는 저장값이 비어 있을 때 비활성이라, 라이브 값 = 타 플러그인/코어의 실제 결과.
+	 * 지금 이 모듈이 없을 때 워드프레스가 /robots.txt 로 내보낼 내용(보기 전용·바탕 만들기용).
+	 *
+	 * 예전에는 자기 사이트 /robots.txt 를 HTTP 로 받아 5분 트랜지언트에 담았다. 그 값이 페이지 캐시·
+	 * 이 모듈이 막 저장한 내용 같은 **엉뚱한 바탕**이 되어, 다음 인증 줄을 넣을 때 사이트맵 줄이
+	 * `sitemap.xml`(404)로 바뀌고 `Allow: /` 가 붙어 저장됐다(2026-09-15 wooun.kr).
+	 * → 워드프레스 do_robots() 와 같은 순서로 **이 요청 안에서** 만든다: 코어 기본 줄 + `robots_txt` 필터
+	 *   (SEO 모듈·Rank Math·코어 사이트맵이 거기서 줄을 더한다). 이 모듈 자신의 필터만 잠깐 뺀다.
 	 */
 	protected function live_robots_txt() {
 		if ( file_exists( ABSPATH . 'robots.txt' ) ) {
 			// phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents
 			return (string) @file_get_contents( ABSPATH . 'robots.txt' );
 		}
-		$cached = get_transient( 'wsp_cur_robots' );
-		if ( false !== $cached ) {
-			return (string) $cached;
+		$public = (string) get_option( 'blog_public' );
+		$out    = "User-agent: *\n";
+		if ( '0' === $public ) {
+			$out .= "Disallow: /\n";
+		} else {
+			$path = (string) wp_parse_url( site_url(), PHP_URL_PATH );
+			$out .= "Disallow: {$path}/wp-admin/\n";
+			$out .= "Allow: {$path}/wp-admin/admin-ajax.php\n";
 		}
-		$res  = wp_remote_get( home_url( '/robots.txt' ), array( 'timeout' => 5 ) );
-		$body = is_wp_error( $res ) ? '' : (string) wp_remote_retrieve_body( $res );
-		set_transient( 'wsp_cur_robots', $body, 5 * MINUTE_IN_SECONDS );
-		return $body;
+		$mine = has_filter( 'robots_txt', array( $this, 'filter_robots' ) );
+		if ( false !== $mine ) {
+			remove_filter( 'robots_txt', array( $this, 'filter_robots' ), 99 );
+		}
+		$out = (string) apply_filters( 'robots_txt', $out, $public );
+		if ( false !== $mine ) {
+			add_filter( 'robots_txt', array( $this, 'filter_robots' ), 99, 2 );
+		}
+		return $out;
+	}
+
+	/**
+	 * 이 사이트의 진짜 사이트맵 주소(REST 「웹마스터 도구」 정보·robots 사이트맵 줄 맞추기에 쓴다).
+	 * 사이트팩 SEO 가 켜져 있고 Rank Math 가 없으면 사이트팩 사이트맵 → 아니면 robots 의 Sitemap 줄 → 코어 사이트맵.
+	 *
+	 * @return string
+	 */
+	public function sitemap_url() {
+		$own = $this->own_sitemap_url();
+		if ( '' !== $own ) {
+			return $own;
+		}
+		$robots = $this->editable_robots_txt();
+		if ( '' === trim( $robots ) ) {
+			$robots = $this->live_robots_txt();
+		}
+		if ( preg_match( '/^\s*Sitemap:\s*(\S+)/mi', $robots, $m ) ) {
+			return $m[1];
+		}
+		if ( function_exists( 'get_sitemap_url' ) ) {
+			$u = get_sitemap_url( 'index' );
+			if ( $u ) {
+				return (string) $u;
+			}
+		}
+		return '';
+	}
+
+	/** 사이트팩 SEO 가 사이트맵을 내고 있으면 그 주소, 아니면 빈 값. */
+	protected function own_sitemap_url() {
+		$seo = class_exists( 'WSP_Core' ) ? WSP_Core::module( 'seo' ) : null;
+		if ( $seo && $seo->is_active() && method_exists( $seo, 'rank_math_active' ) && ! $seo->rank_math_active() ) {
+			return home_url( '/sitemap_index.xml' );
+		}
+		return '';
+	}
+
+	/**
+	 * robots 의 Sitemap 줄을 이 주소로 맞춘다(순수 함수 — 검산이 본다).
+	 * 이미 같으면 그대로 · 다른 Sitemap 줄이 있으면 첫 줄을 바꾸고 나머지 Sitemap 줄은 뺀다 · 없으면
+	 * 인증 줄(#…) 앞에 넣는다. 주소가 비면 손대지 않는다.
+	 *
+	 * @param string $robots
+	 * @param string $url
+	 * @return string
+	 */
+	public static function with_sitemap_line( $robots, $url ) {
+		$robots = str_replace( array( "\r\n", "\r" ), "\n", (string) $robots );
+		if ( '' === (string) $url ) {
+			return $robots;
+		}
+		$lines = explode( "\n", $robots );
+		$out   = array();
+		$done  = false;
+		foreach ( $lines as $line ) {
+			if ( preg_match( '/^\s*Sitemap:/i', $line ) ) {
+				if ( ! $done ) {
+					$out[] = 'Sitemap: ' . $url;
+					$done  = true;
+				}
+				continue;
+			}
+			$out[] = $line;
+		}
+		if ( ! $done ) {
+			$at = count( $out );
+			foreach ( $out as $i => $line ) {
+				if ( 0 === strpos( ltrim( $line ), '#' ) ) {
+					$at = $i;
+					break;
+				}
+			}
+			$insert = array( 'Sitemap: ' . $url, '' );
+			if ( $at > 0 && '' !== trim( $out[ $at - 1 ] ) ) {
+				array_unshift( $insert, '' );
+			}
+			array_splice( $out, $at, 0, $insert );
+		}
+		return rtrim( implode( "\n", $out ) );
 	}
 
 	/**
@@ -247,7 +342,8 @@ class WSP_Mod_Ads_Manager extends WSP_Module {
 		if ( ! $count ) {
 			$robots = rtrim( $base ) . "\n\n" . $line;
 		}
-		$robots = $this->clean_txt( $robots );
+		// 사이트팩 SEO 가 사이트맵을 내면 Sitemap 줄을 그 주소로(옮기기 전 robots 에 wp-sitemap.xml·sitemap.xml 이 남아 있던 곳).
+		$robots = $this->clean_txt( self::with_sitemap_line( $robots, $this->own_sitemap_url() ) );
 
 		$s               = $this->settings();
 		$s['robots_txt'] = $robots;

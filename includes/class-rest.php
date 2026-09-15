@@ -66,7 +66,8 @@ class WSP_Rest {
 			'daum_line'    => $line,
 			'naver_verify' => $sc ? (string) $sc->settings()['verify_naver'] : '',
 			'feed'         => get_feed_link(),
-			'sitemap'      => home_url( '/sitemap_index.xml' ),
+			// 예전엔 home_url('/sitemap_index.xml') 고정이라 사이트팩 SEO 가 없는 곳(bcbnews 는 wp-sitemap.xml)에서 틀렸다.
+			'sitemap'      => $ads ? $ads->sitemap_url() : home_url( '/sitemap_index.xml' ),
 		);
 	}
 
