@@ -31,6 +31,7 @@ class WSP_Core {
 			'class-mod-scroll-popup.php'       => 'WSP_Mod_Scroll_Popup',
 			'class-mod-ad-protector.php'       => 'WSP_Mod_Ad_Protector',
 			'class-mod-seo.php'                => 'WSP_Mod_SEO',
+			'class-mod-site-codes.php'         => 'WSP_Mod_Site_Codes',
 		);
 	}
 
@@ -57,6 +58,12 @@ class WSP_Core {
 			/** @var WSP_Module $mod */
 			$mod = new $class();
 			self::$modules[ $mod->id() ] = $mod;
+		}
+
+		// 소유 확인 태그·인증 파일을 옛 자리(자동 인덱싱·Ads 매니저)에서 한 번 옮기고 그 모듈을 켠다(0.4.6).
+		// 활성 모듈 목록을 읽기 전에 해야 이번 요청부터 태그가 나간다.
+		if ( class_exists( 'WSP_Mod_Site_Codes' ) ) {
+			WSP_Mod_Site_Codes::maybe_migrate();
 		}
 
 		// 활성 모듈만 훅 등록.

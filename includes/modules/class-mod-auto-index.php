@@ -63,31 +63,19 @@ class WSP_Mod_Auto_Index extends WSP_Module {
 			'key'       => '',
 			'auto'      => 1,
 			'types'         => array( 'post' => 1, 'page' => 0 ),
-			'verify_bing'   => '',
-			'verify_naver'  => '',
-			'verify_google' => '',
-			'verify_files'  => array(), // filename => content (업로드한 인증 HTML)
 			'google_auto'     => 0,     // 구글 인덱싱 API 자동 전송
 			'google_key_json' => '',    // 구글 서비스 계정 키(JSON) 원문
 		);
 	}
 
 	public function register() {
-		// 옛 버전에서 넘어온 값 옮기기(로그 → 별도 옵션, Ads 매니저의 인증 파일 → 이 모듈).
+		// 옛 버전에서 넘어온 값 옮기기(로그 → 별도 옵션).
+		// 소유 확인 태그·인증 파일은 「소유 확인·분석 코드」 모듈로 옮겼다 — WSP_Mod_Site_Codes::maybe_migrate()(0.4.6).
 		$this->migrate_log();
-		$this->migrate_verify_files();
 
 		// 키 파일 가상 서빙. 우선순위 1 — 코어의 redirect_canonical(10) 이 404 를 다른 주소로
 		// 돌려보내기 전에 먼저 내보낸다.
 		add_action( 'template_redirect', array( $this, 'maybe_serve_key' ), 1 );
-
-		// 빙/네이버/구글 사이트 소유 인증 메타.
-		add_action( 'wp_head', array( $this, 'output_verification' ), 1 );
-
-		// 업로드한 인증 HTML 파일 가상 서빙.
-		if ( ! empty( $this->settings()['verify_files'] ) ) {
-			add_action( 'template_redirect', array( $this, 'maybe_serve_verify' ), 1 );
-		}
 
 		// 일괄 제출은 저장 요청 안에서 돌리지 않고 WP-Cron 단발 예약으로 이어서 보낸다.
 		add_action( self::BULK_HOOK, array( $this, 'run_bulk_batch' ) );
@@ -140,67 +128,14 @@ class WSP_Mod_Auto_Index extends WSP_Module {
 	}
 
 	/**
-	 * 인증 파일 업로드가 Ads 매니저에도 겹쳐 있었다. 관리는 이 모듈 한 곳으로 모으고,
-	 * Ads 매니저에 저장돼 있던 파일은 잃지 않게 이쪽으로 옮긴다.
-	 * (이 모듈이 켜져 있을 때만 옮긴다 — 꺼진 채로 옮기면 그 파일들이 아무 데서도 서빙되지 않는다.
-	 *  register() 에서만 부르므로 켜진 상태가 보장된다.)
-	 */
-	protected function migrate_verify_files() {
-		$ads = get_option( 'wsp_mod_ads_manager', array() );
-		if ( ! is_array( $ads ) || empty( $ads['verify_files'] ) || ! is_array( $ads['verify_files'] ) ) {
-			return;
-		}
-		$s   = $this->settings();
-		$mine = is_array( $s['verify_files'] ) ? $s['verify_files'] : array();
-		foreach ( $ads['verify_files'] as $name => $content ) {
-			if ( ! isset( $mine[ $name ] ) ) {
-				$mine[ $name ] = $content; // 같은 이름이 이미 있으면 이쪽 것을 그대로 둔다.
-			}
-		}
-		$s['verify_files'] = $mine;
-		WSP_Settings::set( $this->id(), $s );
-
-		$ads['verify_files'] = array(); // 두 모듈이 같은 파일을 서빙하지 않게 옛 자리는 비운다.
-		update_option( 'wsp_mod_ads_manager', $ads );
-	}
-
-	/**
-	 * 네이버 소유 확인 메타 값을 넣는다(WSP_Rest 가 부른다). 메타 태그는 이 모듈이 켜져 있을 때만 나간다.
+	 * 네이버 소유 확인 값 — 「소유 확인·분석 코드」 모듈로 넘긴다(옛 호출 자리를 위해 남긴 다리, 0.4.6).
 	 *
 	 * @param string $code naver-site-verification 의 content 값.
-	 * @return bool 이 모듈이 켜져 있어 태그가 실제로 나가는가.
+	 * @return bool
 	 */
 	public function put_naver_verification( $code ) {
-		$s                 = $this->settings();
-		$s['verify_naver'] = sanitize_text_field( (string) $code );
-		WSP_Settings::set( $this->id(), $s );
-		return $this->is_active();
-	}
-
-	/** 빙/네이버/구글 인증 메타 태그 출력(<head>). */
-	public function output_verification() {
-		$s = $this->settings();
-		if ( ! empty( $s['verify_bing'] ) ) {
-			echo '<meta name="msvalidate.01" content="' . esc_attr( $s['verify_bing'] ) . '" />' . "\n";
-		}
-		if ( ! empty( $s['verify_naver'] ) ) {
-			echo '<meta name="naver-site-verification" content="' . esc_attr( $s['verify_naver'] ) . '" />' . "\n";
-		}
-		if ( ! empty( $s['verify_google'] ) ) {
-			echo '<meta name="google-site-verification" content="' . esc_attr( $s['verify_google'] ) . '" />' . "\n";
-		}
-	}
-
-	/** 업로드한 인증 HTML 파일을 루트 경로에서 서빙(예: googleXXXX.html, naverXXXX.html). */
-	public function maybe_serve_verify() {
-		$req  = isset( $_SERVER['REQUEST_URI'] ) ? sanitize_text_field( wp_unslash( $_SERVER['REQUEST_URI'] ) ) : '';
-		$path = trim( wp_parse_url( $req, PHP_URL_PATH ) ?: '', '/' );
-		$files = $this->settings()['verify_files'];
-		if ( is_array( $files ) && isset( $files[ $path ] ) ) {
-			$this->send_virtual_headers( 'text/html; charset=utf-8' );
-			echo $files[ $path ]; // phpcs:ignore WordPress.Security.EscapeOutput
-			exit;
-		}
+		$sc = WSP_Core::module( 'site_codes' );
+		return $sc ? $sc->put_naver_verification( $code ) : false;
 	}
 
 	/**
@@ -763,10 +698,6 @@ class WSP_Mod_Auto_Index extends WSP_Module {
 				'post' => empty( $input['type_post'] ) ? 0 : 1,
 				'page' => empty( $input['type_page'] ) ? 0 : 1,
 			),
-			'verify_bing'   => isset( $input['verify_bing'] ) ? sanitize_text_field( (string) $input['verify_bing'] ) : '',
-			'verify_naver'  => isset( $input['verify_naver'] ) ? sanitize_text_field( (string) $input['verify_naver'] ) : '',
-			'verify_google' => isset( $input['verify_google'] ) ? sanitize_text_field( (string) $input['verify_google'] ) : '',
-			'verify_files'  => is_array( $s['verify_files'] ) ? $s['verify_files'] : array(),
 			'google_auto'     => empty( $input['google_auto'] ) ? 0 : 1,
 			'google_key_json' => (string) $s['google_key_json'], // 기본은 저장돼 있던 키를 그대로 둔다.
 		);
@@ -785,23 +716,6 @@ class WSP_Mod_Auto_Index extends WSP_Module {
 				// 저장하지 않고 까닭을 화면에 보인다(있던 키는 지우지 않는다).
 				set_transient( self::GOOGLE_ERROR_TRANSIENT, '구글 서비스 계정 키를 저장하지 못했습니다 — JSON 안에 client_email 과 private_key 가 둘 다 있어야 합니다. 구글 클라우드 콘솔에서 내려받은 키 파일 내용을 통째로 붙여 넣으세요.', 60 );
 			}
-		}
-
-		// 인증 HTML 파일 업로드(구글/빙/네이버 파일 방식). 파일명·내용만 저장.
-		if ( ! empty( $_FILES['verify_upload']['name'] ) && empty( $_FILES['verify_upload']['error'] ) ) {
-			$name = sanitize_file_name( $_FILES['verify_upload']['name'] );
-			$tmp  = isset( $_FILES['verify_upload']['tmp_name'] ) ? $_FILES['verify_upload']['tmp_name'] : ''; // phpcs:ignore
-			if ( $name && is_uploaded_file( $tmp ) ) {
-				// phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents
-				$content = (string) @file_get_contents( $tmp );
-				if ( strlen( $content ) < 100000 ) { // 100KB 캡.
-					$out['verify_files'][ $name ] = $content;
-				}
-			}
-		}
-		// 인증 파일 삭제.
-		if ( ! empty( $input['remove_verify'] ) ) {
-			unset( $out['verify_files'][ sanitize_file_name( (string) $input['remove_verify'] ) ] );
 		}
 
 		// 수동 인덱싱 요청(저장과 동시에 즉시 제출).
@@ -1106,42 +1020,24 @@ class WSP_Mod_Auto_Index extends WSP_Module {
 					<?php endif; ?>
 				</div>
 			</div>
-			<div class="wsp-note">구글 인덱싱 API 는 구글이 공식적으로는 채용공고·생방송 페이지용으로 열어 둔 것이라, 일반 글은 반영이 늦거나 안 될 수 있습니다.</div>
+			<div class="wsp-note">
+				<strong>⚠️ 먼저 읽어 주세요 — 일반 글에는 효과가 거의 없습니다.</strong>
+				구글은 인덱싱 API 를 <strong>채용공고(JobPosting 구조화 데이터)</strong>와 <strong>생방송(동영상 안의 BroadcastEvent)</strong> 페이지에만 쓰라고 정해 두었습니다.
+				일반 정보글·블로그 글을 보내도 빨리 색인한다는 보장이 없고, 구글은 목적 밖의 사용을 스팸 검사 대상으로 삼아 사용 권한을 막을 수 있다고 밝혔습니다.
+				일반 글은 <strong>사이트맵 + 서치콘솔</strong>로 충분합니다.
+			</div>
+			<div class="wsp-note">
+				<strong>구글 서비스 계정 키(JSON) 받는 법</strong>
+				<ol style="margin:6px 0 0 18px">
+					<li>구글 클라우드 프로젝트 만들기 — <a href="https://console.cloud.google.com/projectcreate" target="_blank" rel="noopener">console.cloud.google.com/projectcreate</a></li>
+					<li>그 프로젝트에서 <strong>Web Search Indexing API</strong> 사용 설정 — <a href="https://console.cloud.google.com/apis/library/indexing.googleapis.com" target="_blank" rel="noopener">API 라이브러리 열기</a></li>
+					<li><strong>서비스 계정</strong> 만들기 → 만든 계정의 <strong>「키」 탭 → 키 추가 → JSON</strong> 을 누르면 파일이 내려받아집니다 — <a href="https://console.cloud.google.com/iam-admin/serviceaccounts" target="_blank" rel="noopener">서비스 계정 열기</a></li>
+					<li>서치콘솔 <strong>설정 → 사용자 및 권한</strong>에서 서비스 계정 이메일(<code>…@….iam.gserviceaccount.com</code>)을 <strong>소유자</strong>로 추가 — <a href="https://search.google.com/search-console/users" target="_blank" rel="noopener">사용자 및 권한 열기</a></li>
+					<li>내려받은 JSON 파일을 메모장으로 열어 <strong>내용 전체</strong>를 위 칸에 붙여 넣고 저장</li>
+				</ol>
+			</div>
 
-			<div class="wsp-row">
-				<div class="wsp-row-label"><strong>빙 웹마스터 인증</strong>
-					<span class="wsp-row-help">빙 웹마스터툴의 메타태그 인증 코드(msvalidate.01 값만).</span></div>
-				<div class="wsp-row-control"><input type="text" name="verify_bing" value="<?php echo esc_attr( $s['verify_bing'] ); ?>" placeholder="예: A1B2C3D4E5F6..."></div>
-			</div>
-			<div class="wsp-row">
-				<div class="wsp-row-label"><strong>네이버 서치어드바이저 인증</strong>
-					<span class="wsp-row-help">네이버 메타태그 인증 코드(naver-site-verification 값만).</span></div>
-				<div class="wsp-row-control"><input type="text" name="verify_naver" value="<?php echo esc_attr( $s['verify_naver'] ); ?>" placeholder="예: 1a2b3c..."></div>
-			</div>
-			<div class="wsp-row">
-				<div class="wsp-row-label"><strong>구글 서치콘솔 인증</strong>
-					<span class="wsp-row-help">구글 메타태그 인증 코드(google-site-verification 값만).</span></div>
-				<div class="wsp-row-control"><input type="text" name="verify_google" value="<?php echo esc_attr( $s['verify_google'] ); ?>" placeholder="예: AbCdEf..."></div>
-			</div>
-			<div class="wsp-row">
-				<div class="wsp-row-label"><strong>인증 HTML 파일 업로드</strong>
-					<span class="wsp-row-help">메타태그 대신 <strong>파일 방식</strong>으로 인증할 때. 구글/빙/네이버가 준 HTML 파일을 그대로 올리세요(루트에서 자동 서빙).</span></div>
-				<div class="wsp-row-control">
-					<input type="file" name="verify_upload" accept=".html,.htm,.txt,.xml">
-					<?php $vf = $s['verify_files']; if ( ! empty( $vf ) ) : ?>
-						<table class="widefat striped" style="margin-top:10px;max-width:520px"><tbody>
-						<?php foreach ( $vf as $fname => $c ) : ?>
-							<tr>
-								<td><code class="wsp-code"><?php echo esc_html( $fname ); ?></code>
-									<a href="<?php echo esc_url( home_url( '/' . $fname ) ); ?>" target="_blank">열기</a></td>
-								<td style="text-align:right"><button type="submit" name="remove_verify" value="<?php echo esc_attr( $fname ); ?>" class="button-link-delete"
-										onclick="return confirm('<?php echo esc_js( $fname ); ?> 인증 파일을 삭제할까요? 검색엔진 소유 확인이 풀릴 수 있습니다.');">삭제</button></td>
-							</tr>
-						<?php endforeach; ?>
-						</tbody></table>
-					<?php endif; ?>
-				</div>
-			</div>
+			<div class="wsp-note">검색엔진 <strong>소유 확인</strong>(구글·네이버·빙 인증 태그·인증 파일)은 색인 요청과 관계없어 「<a href="<?php echo esc_url( admin_url( 'admin.php?page=wp-site-pack&module=site_codes' ) ); ?>">소유 확인·분석 코드</a>」로 옮겼습니다.</div>
 
 			<div class="wsp-row">
 				<div class="wsp-row-label"><strong>전체 URL 일괄 제출</strong>

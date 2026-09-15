@@ -58,13 +58,13 @@ class WSP_Rest {
 	/** 지금 상태 — 사이트팩 버전·켜진 모듈·robots 의 다음 줄·네이버 메타 값. */
 	public static function info() {
 		$ads  = WSP_Core::module( 'ads_manager' );
-		$idx  = WSP_Core::module( 'auto_index' );
+		$sc   = WSP_Core::module( 'site_codes' );
 		$line = $ads ? $ads->daum_line() : '';
 		return array(
 			'version'      => WSP_VERSION,
 			'modules'      => array_keys( array_filter( WSP_Settings::active_map() ) ),
 			'daum_line'    => $line,
-			'naver_verify' => $idx ? (string) $idx->settings()['verify_naver'] : '',
+			'naver_verify' => $sc ? (string) $sc->settings()['verify_naver'] : '',
 			'feed'         => get_feed_link(),
 			'sitemap'      => home_url( '/sitemap_index.xml' ),
 		);
@@ -91,11 +91,12 @@ class WSP_Rest {
 		if ( '' === $code || ! preg_match( '/^[A-Za-z0-9_\-]+$/', $code ) ) {
 			return new WP_Error( 'wsp_bad_code', '영문·숫자로 된 확인 값이어야 합니다.', array( 'status' => 400 ) );
 		}
-		$idx = WSP_Core::module( 'auto_index' );
-		if ( ! $idx ) {
-			return new WP_Error( 'wsp_no_module', '자동 인덱싱 모듈을 불러오지 못했습니다.', array( 'status' => 500 ) );
+		// 소유 확인 태그는 「소유 확인·분석 코드」 모듈이 맡는다(예전엔 자동 인덱싱 안에 있었다 — 0.4.6).
+		$sc = WSP_Core::module( 'site_codes' );
+		if ( ! $sc ) {
+			return new WP_Error( 'wsp_no_module', '소유 확인·분석 코드 모듈을 불러오지 못했습니다.', array( 'status' => 500 ) );
 		}
-		$idx->put_naver_verification( $code );
+		$sc->put_naver_verification( $code );
 		self::clear_caches();
 		return array( 'ok' => true );
 	}
