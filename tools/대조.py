@@ -23,6 +23,7 @@ import json
 import re
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 from html.parser import HTMLParser
 
@@ -75,9 +76,15 @@ def _read_response(resp):
     return {"status": status, "headers": headers, "body": body, "error": None}
 
 
+def _ascii_url(url: str) -> str:
+    """한글 슬러그처럼 인코딩 안 된 글자가 든 주소를 퍼센트 표기로 바꾼다(이미 %xx 인 것은 그대로).
+    urllib 는 비ASCII 주소를 받으면 UnicodeEncodeError 로 멈춘다(bcbnews.kr 글 주소)."""
+    return urllib.parse.quote(url, safe=":/?#[]@!$&'()*+,;=%~")
+
+
 def fetch(url: str, nocache: bool = False, timeout: int = TIMEOUT) -> dict:
     """GET 요청 하나. 실패해도 예외를 던지지 않고 결과 안에 오류를 담는다."""
-    target = _add_nocache(url) if nocache else url
+    target = _ascii_url(_add_nocache(url) if nocache else url)
     req = urllib.request.Request(target, headers={
         "User-Agent": UA,
         "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",

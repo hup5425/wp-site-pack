@@ -343,20 +343,25 @@ class WSP_SEO_Sitemap {
 	 */
 	protected function latest_modified( $type, $chunk, $per ) {
 		$args = $this->post_query_args( $type );
+		$args['no_found_rows'] = true;
 		if ( $per > 0 ) {
 			// 그 파일에 담기는 묶음(오래된 것부터 센 자리)만 훑는다.
 			$args['posts_per_page'] = $per;
 			$args['offset']         = ( max( 1, (int) $chunk ) - 1 ) * $per;
+			$posts                  = ( new WP_Query( $args ) )->posts;
 		} else {
-			// 전체에서 찾을 때는 수정 시각 내림차순 한 편이면 된다.
+			// 전체에서 찾을 때는 수정 시각이 가장 늦은 한 편 + 발행 시각이 가장 늦은 한 편.
+			// 예약 발행 글은 수정 시각이 발행 시각보다 앞서 「수정 내림차순」만으로는 빠진다.
 			$args['posts_per_page'] = 1;
-			$args['orderby']        = 'modified';
 			$args['order']          = 'DESC';
+			$posts                  = array();
+			foreach ( array( 'modified', 'date' ) as $by ) {
+				$args['orderby'] = $by;
+				$posts           = array_merge( $posts, ( new WP_Query( $args ) )->posts );
+			}
 		}
-		$args['no_found_rows'] = true;
-		$q = new WP_Query( $args );
 		$latest = '';
-		foreach ( $q->posts as $p ) {
+		foreach ( $posts as $p ) {
 			$iso = WSP_SEO_Head::modified_iso( $p ); // 사이트 시간대(+09:00) — 머리말·구조화 데이터와 같은 방식.
 			if ( '' !== $iso && $iso > $latest ) {
 				$latest = $iso;

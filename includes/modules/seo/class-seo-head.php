@@ -729,13 +729,25 @@ class WSP_SEO_Head {
 		if ( ! $post ) {
 			return '';
 		}
+		// 예약 발행 글은 써 둔 시각(post_modified)이 발행 시각보다 앞선다 — 수정 시각이 발행 시각보다
+		// 이르게 나가지 않도록 둘 중 늦은 쪽을 쓴다(Rank Math 도 이렇게 냈다. 2026-09-15 ctrla·ssometime 대조).
 		if ( function_exists( 'get_the_date' ) && function_exists( 'get_the_modified_date' ) ) {
 			$d = $modified ? get_the_modified_date( 'c', $post ) : get_the_date( 'c', $post );
 			if ( is_string( $d ) && '' !== $d ) {
+				if ( $modified ) {
+					$p = get_the_date( 'c', $post );
+					if ( is_string( $p ) && '' !== $p && strtotime( $p ) > strtotime( $d ) ) {
+						return $p;
+					}
+				}
 				return $d;
 			}
 		}
-		return self::iso8601( $modified ? $post->post_modified_gmt : $post->post_date_gmt );
+		$gmt = $modified ? $post->post_modified_gmt : $post->post_date_gmt;
+		if ( $modified && strtotime( (string) $post->post_date_gmt ) > strtotime( (string) $post->post_modified_gmt ) ) {
+			$gmt = $post->post_date_gmt;
+		}
+		return self::iso8601( $gmt );
 	}
 
 	/**
