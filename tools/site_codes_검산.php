@@ -77,6 +77,12 @@ $광고단위 = '<ins class="adsbygoogle" data-ad-client="ca-pub-531531666826265
 $순서 = '<meta content="f682abc7f15f566fdb6b0e3dd676423ee52c44ae" name="naver-site-verification">';
 확인( '찾기 — 메타 속성 순서가 바뀌어도', $C::find_codes( $순서 )['verify_naver']['values'], array( 'f682abc7f15f566fdb6b0e3dd676423ee52c44ae' ) );
 
+// 광고 단위 엘리먼츠(coreabiz cobiz_footer 모양) — 옮기지 않으므로 거기 딸린 로더는 찾기에서 뺀다.
+$광고단위_엘리먼츠 = "<center>\n<script async src=\"https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-5315316668262651\" crossorigin=\"anonymous\"></script>\n<ins class=\"adsbygoogle\" style=\"display:block\" data-ad-client=\"ca-pub-5315316668262651\" data-ad-slot=\"6742116982\"></ins>\n<script>(adsbygoogle = window.adsbygoogle || []).push({});</script>\n</center>";
+확인( '광고 단위 엘리먼츠 — 찾기에서 애드센스 빠짐', $C::find_codes( $C::without_ad_unit_loader( $광고단위_엘리먼츠 ) )['adsense']['values'], array() );
+확인( '머리말 로더만 든 엘리먼츠 — 애드센스 그대로 찾음', $C::find_codes( $C::without_ad_unit_loader( $ads_el ) )['adsense']['values'], array( 'ca-pub-5315316668262651' ) );
+확인( '광고 단위가 있어도 다른 코드(GA4)는 그대로', $C::find_codes( $C::without_ad_unit_loader( $광고단위_엘리먼츠 . $ga4_el ) )['ga4']['values'], array( 'G-R0EHR1LHP3' ) );
+
 /* ================= 3. 넣는 코드 ================= */
 
 $s = array(

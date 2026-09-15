@@ -316,7 +316,7 @@ class WSP_Mod_Site_Codes extends WSP_Module {
 			if ( 'hook' !== get_post_meta( $el->ID, '_generate_element_type', true ) ) {
 				continue;
 			}
-			$add( (string) get_post_meta( $el->ID, '_generate_element_content', true ), 'GeneratePress 엘리먼츠 #' . $el->ID . ' «' . $el->post_title . '»' );
+			$add( self::without_ad_unit_loader( (string) get_post_meta( $el->ID, '_generate_element_content', true ) ), 'GeneratePress 엘리먼츠 #' . $el->ID . ' «' . $el->post_title . '»' );
 		}
 		// ② 자식 테마 functions.php.
 		$fn = get_stylesheet_directory() . '/functions.php';
@@ -349,6 +349,22 @@ class WSP_Mod_Site_Codes extends WSP_Module {
 			}
 		}
 		return $out;
+	}
+
+	/**
+	 * 광고 단위(<ins class="adsbygoogle">)가 든 코드에서는 애드센스 로더를 찾기 대상에서 뺀다.
+	 * 광고 단위 엘리먼츠는 옮기지 않고 그대로 두므로, 거기 딸린 로더까지 사이트팩 칸에 채우면
+	 * 같은 로더가 두 번 나간다(2026-09-15 coreabiz — 푸터 광고 단위 cobiz_footer 만 로더를 내던 곳).
+	 *
+	 * @param string $text
+	 * @return string
+	 */
+	public static function without_ad_unit_loader( $text ) {
+		$text = (string) $text;
+		if ( false === stripos( $text, '<ins' ) ) {
+			return $text;
+		}
+		return preg_replace( '~adsbygoogle\.js\?client=ca-pub-\d+~i', 'adsbygoogle.js', $text );
 	}
 
 	/** 웹 루트에 실제로 있는 인증 파일(네이버·구글·빙). */
