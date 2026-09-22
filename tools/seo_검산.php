@@ -352,6 +352,21 @@ $쌍3   = WSP_SEO_Schema::faq_from_headings( $본문3 );
 확인( 'FAQ 제목이 없으면 0개', WSP_SEO_Schema::faq_from_headings( '<h2>소제목</h2><p>글</p>' ), array() );
 확인( '답이 비면 그 질문은 안 담김', WSP_SEO_Schema::faq_from_headings( '<h2>FAQ</h2><h3>질문만 있음</h3>' ), array() );
 
+// 워프글쓰기 2026-09-22 새 모양 — «그룹» 블록 + wsp-faq. 상자 뒤 출처 문단이 마지막 답에 섞이면 안 된다.
+$본문4 = '<!-- wp:group {"className":"wsp-faq"} -->' . "\n\n\n" . '<div class="wp-block-group wsp-faq">'
+	. '<!-- wp:heading --><h2>자주 묻는 질문</h2><!-- /wp:heading -->'
+	. '<!-- wp:heading {"level":3} --><h3>자격은?</h3><!-- /wp:heading -->'
+	. '<!-- wp:paragraph --><p>19세 이상.</p><!-- /wp:paragraph -->'
+	. '<!-- wp:heading {"level":3} --><h3>기간은?</h3><!-- /wp:heading -->'
+	. '<!-- wp:paragraph --><p>3월까지.</p><!-- /wp:paragraph -->'
+	. '</div>' . "\n" . '<!-- /wp:group -->'
+	. '<!-- wp:paragraph --><p>출처: 국토부</p><!-- /wp:paragraph --><h2>마무리</h2><p>끝</p>';
+$쌍4 = WSP_SEO_Schema::faq_from_headings( $본문4 );
+확인( 'wsp-faq 상자 — 질문 2개', count( $쌍4 ), 2 );
+확인( 'wsp-faq 상자 — 마지막 답에 상자 뒤 출처가 안 섞임', $쌍4[1]['a'], '3월까지.' );
+확인( 'wsp-faq 상자가 없으면 빈 글자', WSP_SEO_Schema::wsp_faq_box( '<h2>FAQ</h2>' ), '' );
+확인( '중첩 div 도 짝을 맞춘다', WSP_SEO_Schema::wsp_faq_box( '<div class="wsp-faq"><div>안</div>끝</div>뒤' ), '<div>안</div>끝' );
+
 /* ============================ 3. 유튜브 id ============================ */
 
 확인(

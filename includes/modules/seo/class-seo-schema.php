@@ -347,6 +347,12 @@ class WSP_SEO_Schema {
 	 */
 	public static function faq_from_headings( $content ) {
 		$content = (string) $content;
+		// 워프글쓰기가 2026-09-22 부터 FAQ 를 «그룹» 블록 + `wsp-faq` 로 감싼다(편집기의 «Rank Math 블록 지원 안 함» 경고를 없애려고).
+		// 그 상자가 있으면 **상자 안만** 본다 — 상자 뒤의 출처 문단 등이 마지막 답에 섞이지 않게.
+		$box = self::wsp_faq_box( $content );
+		if ( '' !== $box ) {
+			$content = $box;
+		}
 		if ( ! preg_match( '/<h([1-4])\b[^>]*>\s*(?:[^\w<]{0,3}\s*)?(?:자주\s*묻는\s*질문|자주묻는질문|FAQ)\b[^<]*<\/h\1>/iu', $content, $m, PREG_OFFSET_CAPTURE ) ) {
 			return array();
 		}
@@ -378,6 +384,29 @@ class WSP_SEO_Schema {
 			}
 		}
 		return $out;
+	}
+
+	/**
+	 * `wsp-faq` 그룹 상자의 안쪽 HTML(없으면 빈 글자). 중첩된 div 는 깊이를 세어 짝을 맞춘다. (순수 함수)
+	 *
+	 * @param string $content 원본 post_content.
+	 * @return string
+	 */
+	public static function wsp_faq_box( $content ) {
+		if ( ! preg_match( '/<div\b[^>]*class="[^"]*\bwsp-faq\b[^"]*"[^>]*>/i', $content, $m, PREG_OFFSET_CAPTURE ) ) {
+			return '';
+		}
+		$start = $m[0][1] + strlen( $m[0][0] );
+		$pos   = $start;
+		$depth = 1;
+		while ( $depth > 0 && preg_match( '/<(\/?)div\b[^>]*>/i', $content, $t, PREG_OFFSET_CAPTURE, $pos ) ) {
+			$depth += ( '/' === $t[1][0] ) ? -1 : 1;
+			$pos    = $t[0][1] + strlen( $t[0][0] );
+			if ( 0 === $depth ) {
+				return substr( $content, $start, $t[0][1] - $start );
+			}
+		}
+		return '';
 	}
 
 	/** HTML → 평문(태그를 걷고 공백 정리). */
