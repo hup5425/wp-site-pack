@@ -32,7 +32,7 @@ includes/
   class-assets.php          프론트 자원 헬퍼
   class-stats-bridge.php    통계 데이터 읽기전용 재사용
   class-updater.php         GitHub 릴리스 자동 업데이트
-  modules/class-mod-*.php   7개 모듈
+  modules/class-mod-*.php   모듈들(스니펫 = class-mod-snippets.php — 켜고 끄는 작은 기능은 여기에 한 줄씩 더한다)
 admin/dashboard.php, settings-page.php
 assets/admin.css, admin.js, front/*
 ```
