@@ -586,7 +586,7 @@ class WSP_Mod_Site_Codes extends WSP_Module {
 				</div>
 				<div class="wsp-row">
 					<div class="wsp-row-label"><strong>다음(Daum) 웹마스터</strong>
-						<span class="wsp-row-help">다음은 robots.txt 한 줄로 인증합니다 — 그 줄은 「Ads 매니저」의 robots.txt 에 있습니다.</span></div>
+						<span class="wsp-row-help">다음은 robots.txt 한 줄로 인증합니다 — 그 줄은 「Ads&amp;robots 매니저」의 robots.txt 에 있습니다.</span></div>
 					<div class="wsp-row-control">
 						<?php if ( '' !== $daum ) : ?>
 							<code class="wsp-code"><?php echo esc_html( $daum ); ?></code>
@@ -594,7 +594,7 @@ class WSP_Mod_Site_Codes extends WSP_Module {
 							<p class="wsp-check-no">robots.txt 에 다음 인증 줄 없음</p>
 						<?php endif; ?>
 						<?php if ( $ads ) : ?>
-							<p class="wsp-row-help"><a href="<?php echo esc_url( $ads->settings_url() ); ?>">Ads 매니저에서 보기</a></p>
+							<p class="wsp-row-help"><a href="<?php echo esc_url( $ads->settings_url() ); ?>">Ads&amp;robots 매니저에서 보기</a></p>
 						<?php endif; ?>
 					</div>
 				</div>

@@ -79,7 +79,7 @@ class WSP_Rest {
 		}
 		$ads = WSP_Core::module( 'ads_manager' );
 		if ( ! $ads ) {
-			return new WP_Error( 'wsp_no_module', 'Ads 매니저 모듈을 불러오지 못했습니다.', array( 'status' => 500 ) );
+			return new WP_Error( 'wsp_no_module', 'Ads&robots 매니저 모듈을 불러오지 못했습니다.', array( 'status' => 500 ) );
 		}
 		$robots = $ads->put_daum_line( $line );
 		self::clear_caches();

@@ -32,6 +32,7 @@ class WSP_Core {
 			'class-mod-ad-protector.php'       => 'WSP_Mod_Ad_Protector',
 			'class-mod-seo.php'                => 'WSP_Mod_SEO',
 			'class-mod-site-codes.php'         => 'WSP_Mod_Site_Codes',
+			'class-mod-snippets.php'           => 'WSP_Mod_Snippets',
 		);
 	}
 
@@ -64,6 +65,11 @@ class WSP_Core {
 		// 활성 모듈 목록을 읽기 전에 해야 이번 요청부터 태그가 나간다.
 		if ( class_exists( 'WSP_Mod_Site_Codes' ) ) {
 			WSP_Mod_Site_Codes::maybe_migrate();
+		}
+
+		// 스니펫 모듈은 처음부터 켜 둔다(한 번만 — 그 뒤에는 화면에서 끈 대로).
+		if ( class_exists( 'WSP_Mod_Snippets' ) ) {
+			WSP_Mod_Snippets::maybe_default_on();
 		}
 
 		// 활성 모듈만 훅 등록.

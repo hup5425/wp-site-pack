@@ -1,6 +1,6 @@
 <?php
 /**
- * 모듈: Ads 매니저.
+ * 모듈: Ads&robots 매니저(슬러그는 ads_manager 그대로).
  *  - ads.txt / robots.txt 내용 편집(가상 서빙 우선).
  *  - 네이버/구글 사이트 인증 HTML 파일 가상 서빙.
  *
@@ -14,7 +14,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 class WSP_Mod_Ads_Manager extends WSP_Module {
 
 	public function id()   { return 'ads_manager'; }
-	public function name() { return 'Ads 매니저'; }
+	public function name() { return 'Ads&robots 매니저'; }
 	public function desc() { return 'ads.txt·robots.txt·사이트 인증파일을 파일 업로드 없이 관리합니다.'; }
 	public function icon() { return 'dashicons-media-text'; }
 
